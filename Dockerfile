@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM oven/bun:1.4.4-alpine AS build
+FROM oven/bun:1.4.5-alpine@sha256:da816670775f4c2b4e990b6b1847cf5540dcdc721a42033dd331ce7a88ba6a3b AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -15,7 +15,7 @@ COPY . .
 RUN bun run build
 
 # The server imports no npm package, so the final image carries no node_modules.
-FROM oven/bun:1.4.4-distroless
+FROM oven/bun:1.4.5-distroless@sha256:3a210956422ad81cf7532e1fc1f2eb9275d6ef4c2337a9d25d530f798e80726a
 WORKDIR /app
 COPY --from=build /app/dist dist
 COPY --from=build /app/src/server src/server
