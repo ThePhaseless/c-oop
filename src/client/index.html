@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>c-oop</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<!-- Ahead of the stylesheet: a stored theme is on <html> before the first paint. A file, because the CSP allows no inline script. -->
+<script src="/theme.js"></script>
+<link rel="preload" as="font" type="font/woff2" href="/fonts/recursive-latin-casl-normal.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="/fonts/recursive-latin-mono-normal.woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/main.js"></script>
+</head>
+<!-- The Polish text here is what shows before main.js runs; ui.ts sets it again from strings.ts. -->
+<body data-phase="idle" data-exit="">
+<header class="top">
+  <h1 class="wordmark">c-oop</h1>
+  <div class="room">
+    <ul id="peers" aria-label="Osoby w pokoju">
+      <li class="peer" hidden>
+        <span class="dot" aria-hidden="true"></span>
+        <button id="name" type="button" title="Zmień swoje imię"></button>
+        <input id="name-input" type="text" maxlength="24" autocomplete="off" spellcheck="false" aria-label="Twoje imię" hidden>
+        <span class="you">(ty)</span>
+      </li>
+    </ul>
+    <p id="net">Łączenie</p>
+  </div>
+  <div class="tools">
+    <button id="copy" class="btn" type="button" aria-live="polite">Kopiuj link</button>
+    <button id="theme" class="btn btn-icon" type="button" aria-label="Przełącz motyw jasny i ciemny">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.75a7.25 7.25 0 0 1 0 14.5z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+<div id="notice" role="status" hidden>
+  <p id="notice-text"></p>
+  <button id="new-room" class="btn" type="button" hidden>Utwórz nowy pokój</button>
+</div>
+<main>
+  <section class="pane pane-editor" aria-label="Edytor kodu main.cpp">
+    <div class="pane-head"><h2>main.cpp</h2><p id="editor-hint">Esc, potem Tab: wyjście z edytora</p></div>
+    <div id="editor"></div>
+  </section>
+  <section class="pane pane-terminal" aria-label="Terminal programu">
+    <div class="pane-head">
+      <h2>Terminal</h2>
+      <button id="run" class="btn btn-run" type="button" title="Uruchom program (Ctrl+Enter)" aria-keyshortcuts="Control+Enter Meta+Enter">Uruchom</button>
+      <button id="stop" class="btn btn-stop" type="button" hidden>Zatrzymaj</button>
+      <p id="status" role="status">Gotowe</p>
+      <span id="percent" aria-hidden="true" hidden></span>
+      <progress id="progress" max="1" value="0" aria-label="Pobieranie kompilatora" hidden></progress>
+    </div>
+    <div class="term-wrap">
+      <div id="terminal" data-stdin="idle"></div>
+      <div id="terminal-empty">
+        <h3>Tu pojawi się wynik programu</h3>
+        <p>Przycisk Uruchom albo Ctrl+Enter kompiluje main.cpp w Twojej przeglądarce. Wyjście widzą wszyscy w pokoju i każdy może wpisywać dane.</p>
+        <p class="note">Pierwsze uruchomienie pobiera kompilator, około 30 MB.</p>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

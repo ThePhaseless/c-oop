@@ -1,0 +1,365 @@
+@import "@xterm/xterm/css/xterm.css";
+
+/* Recursive, self-hosted. unicode-range values are copied from the package's mono.css and casl.css.
+   "Recursive Code" carries MONO 1 in the face itself: xterm measures its cell on a canvas, where an
+   element's font-variation-settings does not apply, and the file's default is the proportional cut. */
+@font-face {
+  font-family: "Recursive Code";
+  font-style: normal;
+  font-weight: 300 1000;
+  font-display: swap;
+  font-variation-settings: "MONO" 1;
+  src: url(/fonts/recursive-latin-ext-mono-normal.woff2) format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Recursive Code";
+  font-style: normal;
+  font-weight: 300 1000;
+  font-display: swap;
+  font-variation-settings: "MONO" 1;
+  src: url(/fonts/recursive-latin-mono-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "Recursive UI";
+  font-style: normal;
+  font-weight: 300 1000;
+  font-display: swap;
+  src: url(/fonts/recursive-latin-ext-casl-normal.woff2) format("woff2");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: "Recursive UI";
+  font-style: normal;
+  font-weight: 300 1000;
+  font-display: swap;
+  src: url(/fonts/recursive-latin-casl-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* Tokens. The terminal reads them with getComputedStyle, so every colour is a plain hex.
+   style.test.ts checks the contrast ratios and that the two dark blocks are the same. */
+:root {
+  color-scheme: light dark;
+  --paper: #f6f8fb;
+  --paper-2: #e9eef5;
+  --line: #c5d2e4;
+  --edge: #76839a;
+  --ink: #172036;
+  --ink-2: #525d72;
+  --accent: #2142b8;
+  --accent-ink: #ffffff;
+  --margin: #c2313e;
+  --ok: #1b6e45;
+  --warn: #8a5a00;
+  --select: #d5e0f5;
+  --syn-kw: #2142b8;
+  --syn-type: #096363;
+  --syn-str: #8a4500;
+  --syn-num: #7335a8;
+  --syn-pre: #9b2468;
+  --syn-com: #4f596d;
+  --font-ui: "Recursive UI", system-ui, sans-serif;
+  --font-code: "Recursive Code", ui-monospace, "Cascadia Mono", Menlo, monospace;
+  /* Width of the line-number column. The margin line stands at its right edge, and the header,
+     the pane title and the code all start one --pad after it. */
+  --gutter: 3.75rem;
+  --pad: 0.75rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1b2622;
+    --paper-2: #233029;
+    --line: #3a4b43;
+    --edge: #7f9187;
+    --ink: #e9ece6;
+    --ink-2: #a9b4ad;
+    --accent: #f0d264;
+    --accent-ink: #1b2622;
+    --margin: #f08a92;
+    --ok: #8fd6a4;
+    --warn: #f0b860;
+    --select: #33473f;
+    --syn-kw: #9cc0ff;
+    --syn-type: #7fd6c8;
+    --syn-str: #f2c38a;
+    --syn-num: #d9b0f7;
+    --syn-pre: #f5a8c9;
+    --syn-com: #a9b4ad;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1b2622;
+  --paper-2: #233029;
+  --line: #3a4b43;
+  --edge: #7f9187;
+  --ink: #e9ece6;
+  --ink-2: #a9b4ad;
+  --accent: #f0d264;
+  --accent-ink: #1b2622;
+  --margin: #f08a92;
+  --ok: #8fd6a4;
+  --warn: #f0b860;
+  --select: #33473f;
+  --syn-kw: #9cc0ff;
+  --syn-type: #7fd6c8;
+  --syn-str: #f2c38a;
+  --syn-num: #d9b0f7;
+  --syn-pre: #f5a8c9;
+  --syn-com: #a9b4ad;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font: 450 0.875rem/1.4 var(--font-ui);
+  font-variation-settings: "CASL" 0;
+  text-align: left;
+}
+h1, h2, h3, p, ul { margin: 0; padding: 0; }
+button, input { font: inherit; font-variation-settings: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Controls */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.125rem 0.75rem;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: transparent;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background-color 120ms;
+}
+.btn:hover:not(:disabled) { background: var(--select); }
+.btn-icon { min-width: 2rem; padding: 0; }
+.btn-run { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn-run:hover:not(:disabled) { background: var(--accent); filter: brightness(1.12); }
+.btn-run:disabled { border-color: var(--edge); background: transparent; color: var(--ink-2); cursor: not-allowed; }
+.btn-stop { border-color: var(--margin); color: var(--margin); font-weight: 600; }
+/* inverted: --margin text on the --select hover fill is only 4.1:1 in the dark theme */
+.btn-stop:hover:not(:disabled) { background: var(--margin); color: var(--paper); }
+/* Stop has just taken Run's place under a resting pointer: outlined until the pointer has left once (ui.ts). */
+.btn-stop.fresh:hover { background: transparent; color: var(--margin); }
+
+/* Header */
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  min-height: 3rem;
+  padding: 0.375rem var(--pad) 0.375rem calc(var(--gutter) + 2px + var(--pad));
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line);
+  /* Below 900 px the buttons stand before the people row; where the browser can, Tab follows what is seen. */
+  reading-flow: flex-visual;
+}
+.wordmark, .pane-head h2, #terminal-empty h3 { font-weight: 700; font-variation-settings: "CASL" 1; }
+.wordmark { font-size: 1.25rem; line-height: 1.2; }
+.room { display: flex; flex: 1 1 0; align-items: center; gap: 0.25rem 1rem; min-width: 0; max-width: 100%; }
+.tools { display: flex; gap: 0.5rem; margin-left: auto; }
+/* as wide as its longer label ("Skopiowano"), so the header does not reflow for the two seconds it shows */
+#copy { min-width: 6.75rem; text-align: left; }
+
+/* Wraps instead of scrolling: a row cut off at the edge hid people from the keyboard and from narrow screens. */
+#peers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 1rem;
+  min-width: 0;
+  max-width: 100%;
+  list-style: none;
+}
+.peer { display: flex; flex: none; align-items: center; gap: 0.375rem; font-weight: 500; white-space: nowrap; }
+.dot { flex: none; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: var(--edge); }
+.you, #more, #net { color: var(--ink-2); }
+.more { flex: none; }
+#name, #more {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0 0.25rem;
+  margin: 0 -0.25rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font-weight: 600;
+  text-decoration: underline dotted var(--edge);
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+#name:hover, #more:hover { background: var(--select); }
+/* the default offset would run the ring through the dot and "(ty)" */
+#name:focus-visible, #more:focus-visible { outline-offset: 0; }
+#name-input {
+  width: 12rem;
+  max-width: 50vw;
+  min-height: 2rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--paper);
+}
+#net { flex: none; font-size: 0.8125rem; white-space: nowrap; }
+
+/* Notice bar */
+#notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem var(--pad) 0.5rem calc(var(--gutter) + 2px + var(--pad));
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line);
+}
+#notice-text { max-width: 75ch; }
+#notice[data-kind="stuck"], #notice[data-kind="code-limit"], #notice[data-kind="copy-failed"] { color: var(--warn); }
+#notice[data-kind="insecure"], #notice[data-kind="bad-link"], #notice[data-kind="failed"] { color: var(--margin); font-weight: 600; }
+/* not the notice's red: a red outlined button reads as Stop */
+#new-room { color: var(--ink); }
+
+/* Panes */
+main { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; }
+main[inert] { opacity: 0.55; }
+.pane { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.pane-editor { flex: 3 1 0; min-height: 12rem; }
+.pane-terminal { flex: 2 1 0; min-height: 10rem; border-top: 1px solid var(--line); }
+/* The margin line of the notebook page: through the pane header and down the whole editor. */
+.pane-editor::after {
+  content: "";
+  position: absolute;
+  z-index: 250; /* above CodeMirror's sticky gutter (200), below its panels and tooltips (300) */
+  top: 0;
+  bottom: 0;
+  left: var(--gutter);
+  width: 2px;
+  background: var(--margin);
+  pointer-events: none;
+}
+.pane-head {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  /* the height the terminal's header has with its button, so the two lower edges meet */
+  min-height: calc(2.75rem + 1px);
+  padding: 0.375rem var(--pad);
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line);
+}
+.pane-editor .pane-head { padding-left: calc(var(--gutter) + 2px + var(--pad)); }
+.pane:focus-within > .pane-head { box-shadow: inset 0 -2px 0 var(--accent); }
+.pane-head h2 { font-size: 1rem; }
+/* How to get out of the editor by keyboard, shown while the focus is in it. Takes the rest of the row and
+   wraps inside it, so the header is as high with the hint as without. */
+#editor-hint { flex: 1 1 0; min-width: 0; color: var(--ink-2); font-size: 0.8125rem; line-height: 1.2; }
+.pane-editor:not(:focus-within) #editor-hint { visibility: hidden; }
+/* Two lines of status are as high as the button, so a status that wraps beside it leaves the header its height.
+   Where not even 6.5rem is left beside the button, the status takes a row of its own, whatever it says. */
+#status { flex: 1 1 6.5rem; min-width: 0; font-weight: 500; line-height: 1rem; }
+#percent { flex: none; color: var(--ink-2); font-size: 0.8125rem; line-height: 1rem; font-variant-numeric: tabular-nums; }
+body[data-exit="code:0"] #status { color: var(--ok); }
+/* A strip along the header's upper edge, out of the flow: the header keeps its height while the compiler loads.
+   The lower edge is taken: the focus rule of the pane runs there, in the same colour. */
+#progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  border: 0;
+  overflow: hidden;
+  background: var(--line);
+}
+#progress::-webkit-progress-bar { background: var(--line); }
+#progress::-webkit-progress-value { background: var(--accent); }
+#progress::-moz-progress-bar { background: var(--accent); }
+
+#editor { flex: 1; min-height: 0; }
+.term-wrap { position: relative; flex: 1; min-height: 0; background: var(--paper); }
+/* No padding on the host: the fit addon measures it and subtracts only .xterm's own padding. */
+#terminal { position: absolute; inset: 0; }
+/* The top padding is the editor's (editor.ts), so the first row stands level with line 1. */
+#terminal .xterm { padding: 1.375rem 0 0 var(--pad); font-variation-settings: "MONO" 1; }
+/* xterm paints this layer black under its padding; the theme colours only the rows */
+#terminal .xterm-viewport { background-color: var(--paper) !important; }
+#terminal-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 10; /* above xterm's layers */
+  padding: 1.5rem var(--pad);
+  overflow-y: auto;
+  background: var(--paper);
+}
+#terminal-empty > * { max-width: 34rem; }
+#terminal-empty h3 { margin-bottom: 0.5rem; font-size: 1.25rem; line-height: 1.25; }
+#terminal-empty p { font-size: 0.9375rem; line-height: 1.5; }
+#terminal-empty .note { margin-top: 0.75rem; color: var(--ink-2); font-size: 0.8125rem; }
+
+@media (min-width: 900px) {
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); overflow: hidden; }
+  .pane { min-height: 0; }
+  .pane-terminal { border-top: 0; border-left: 1px solid var(--line); }
+}
+@media (max-width: 899.98px) {
+  .room { order: 1; flex: 1 1 100%; flex-wrap: wrap; }
+  #net { flex: 1 1 12rem; white-space: normal; }
+}
+/* Wide enough but short (a laptop at 200% zoom): stacked, the terminal and its prompt would be off screen. */
+@media (min-width: 37.5rem) and (max-width: 899.98px) and (max-height: 30rem) {
+  main { display: grid; grid-template: auto minmax(0, 1fr) / minmax(0, 3fr) minmax(0, 2fr); overflow: hidden; }
+  /* Both pane headers stand in the first row, so the editor's is as high as the terminal's whatever that one
+     holds, and the code starts level with the terminal's first row. */
+  .pane { display: grid; grid-row: 1 / -1; grid-template-rows: auto minmax(0, 1fr); grid-template-rows: subgrid; min-height: 0; } /* a browser without subgrid keeps the first: two rows of its own in each pane */
+  .pane > * { min-width: 0; }
+  /* The terminal's title is left to screen readers here: without it the status has room beside the button, on two
+     lines when it has to, and the header is as low as the editor's. */
+  .pane-terminal h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* The rows of a header stand at its top, and the editor's has an empty item as high as the terminal's button
+     (also where a coarse pointer makes that higher, below), so its title stands level with the button. */
+  .pane-head { align-content: start; }
+  .pane-editor .pane-head::before { content: ""; min-height: 2rem; margin-right: -0.75rem; }
+  /* The header keeps its height through a run. The percentage is left to the strip along its upper edge, and a status
+     longer than two lines, which is what the button is high, is cut there: the terminal's first and last line say the same. */
+  #percent { display: none; }
+  #status { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  .pane-terminal { border-top: 0; border-left: 1px solid var(--line); }
+  /* One header row while everyone fits. The connection text keeps a width it can be read in; when the people
+     leave it less, it goes below them. */
+  .room { order: 0; flex: 1 1 0; }
+  #net { flex: 1 1 6rem; min-width: 6rem; line-height: 1.3; }
+}
+/* No keyboard to press Esc and Tab on. */
+@media (hover: none) and (pointer: coarse) {
+  #editor-hint { display: none; }
+}
+/* On a phone the status always has the row under the button: beside it there is room for two short words,
+   and a header that grows with the text would push the terminal around during a run. */
+@media (max-width: 24rem) {
+  #status { flex-basis: 60%; }
+}
+@media (pointer: coarse) {
+  .btn, #name, #more, #name-input, .pane-editor .pane-head::before { min-height: 2.75rem; }
+  .btn-icon, #more { min-width: 2.75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

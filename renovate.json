@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["local>ThePhaseless/renovate-config"],
+  "packageRules": [
+    {
+      "description": "The code reads internals of these (Yjs structs, y-codemirror decorations) or pairs them with a pinned sysroot, so a bump waits for a person even when CI is green",
+      "matchPackageNames": ["yjs", "y-codemirror.next", "y-webrtc", "y-protocols", "@yowasp/clang"],
+      "automerge": false,
+      "groupName": "collaboration and compiler internals"
+    }
+  ]
+}
