@@ -25,6 +25,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      - name: The tests and the image use the same Bun
+        run: test "$(grep -c "^FROM oven/bun:$(cat .bun-version)-" Dockerfile)" = 2
       - run: bun install --frozen-lockfile
       - run: bun check
       - run: bun run build
@@ -53,6 +55,7 @@ jobs:
       push: ${{ github.event_name != 'pull_request' }}
       platforms: linux/amd64,linux/arm64
       cache: true
+      cache-mode: max
       sbom: true
       set-meta-labels: true
       meta-images: ghcr.io/thephaseless/c-oop
@@ -68,3 +71,12 @@ jobs:
         - registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+  # The one check a ruleset requires: a skipped job would satisfy a required check of its own,
+  # and the build jobs carry runner labels in their names.
+  ci-ok:
+    if: always()
+    needs: [test, build]
+    runs-on: ubuntu-26.04
+    steps:
+      - run: test "${{ needs.test.result }}" = success && test "${{ needs.build.result }}" = success

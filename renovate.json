@@ -3,6 +3,11 @@
   "extends": ["local>ThePhaseless/renovate-config"],
   "packageRules": [
     {
+      "description": "CI refuses a tree where .bun-version and the Dockerfile's base images differ, so they move in one PR",
+      "matchPackageNames": ["Bun", "oven/bun", "@types/bun"],
+      "groupName": "bun"
+    },
+    {
       "description": "The code reads internals of these (Yjs structs, y-codemirror decorations) or pairs them with a pinned sysroot, so a bump waits for a person even when CI is green",
       "matchPackageNames": ["yjs", "y-codemirror.next", "y-webrtc", "y-protocols", "@yowasp/clang"],
       "automerge": false,
