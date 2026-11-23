@@ -1,4 +1,5 @@
 // Room keys. The secret lives only in location.hash; the server sees the topic and ciphertext.
+// The relay key (relay.ts) is derived from the secret too and never leaves the browser either.
 import type { RoomKeys } from '../shared/contracts'
 import { SECRET_RE } from '../shared/limits'
 
@@ -15,6 +16,7 @@ export function parseSecret(hash: string): string | null {
 
 // A protocol change bumps v1, which puts incompatible app versions in different rooms.
 export async function deriveRoom(secret: string): Promise<RoomKeys> {
-  const [topic, key] = await Promise.all([sha256('c-oop/v1/topic:' + secret), sha256('c-oop/v1/key:' + secret)])
-  return { secret, topic: Array.from(topic.subarray(0, 16), b => b.toString(16).padStart(2, '0')).join(''), password: base64url(key) }
+  const [topic, key, relay] = await Promise.all([sha256('c-oop/v1/topic:' + secret), sha256('c-oop/v1/key:' + secret), sha256('c-oop/v1/relay:' + secret)])
+  const relayKey = await crypto.subtle.importKey('raw', relay, 'AES-GCM', false, ['encrypt', 'decrypt'])
+  return { secret, topic: Array.from(topic.subarray(0, 16), b => b.toString(16).padStart(2, '0')).join(''), password: base64url(key), relayKey }
 }

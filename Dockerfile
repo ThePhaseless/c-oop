@@ -13,13 +13,14 @@ COPY src/shared/toolchain.ts src/shared/
 RUN --mount=type=cache,target=/app/.cache,sharing=locked bun scripts/toolchain.ts
 COPY . .
 RUN bun run build
+# The server and its one npm package become one file, so the final image carries no node_modules.
+RUN bun build src/server/server.ts --target=bun --outfile=server.js
 
-# The server imports no npm package, so the final image carries no node_modules.
+# The server is the one bundled file; dist is served as it is.
 FROM oven/bun:1.4.5-distroless@sha256:3a210956422ad81cf7532e1fc1f2eb9275d6ef4c2337a9d25d530f798e80726a
 WORKDIR /app
 COPY --from=build /app/dist dist
-COPY --from=build /app/src/server src/server
-COPY --from=build /app/src/shared src/shared
+COPY --from=build /app/server.js server.js
 USER 65532:65532
 ENV PORT=8080
 EXPOSE 8080
@@ -27,4 +28,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --start-interval=1s --retries=3 \
   CMD ["/usr/local/bin/bun", "-e", "const r = await fetch('http://127.0.0.1:' + process.env.PORT + '/healthz').catch(() => null); process.exit(r?.ok ? 0 : 1)"]
 # The base image's entrypoint is bun.
-CMD ["src/server/server.ts"]
+CMD ["server.js"]

@@ -1,7 +1,7 @@
 // Importing chunking.ts here, under Bun with no WebRTC global, is itself a check: the module must not touch a WebRTC global at import time.
 import { expect, test } from 'bun:test'
 import { FRAME_MAX } from '../shared/limits'
-import { chunkingWrtc, wrapChannel } from './chunking'
+import { adoptChannel, chunkingWrtc, shownState, wrapChannel } from './chunking'
 
 class FakeChannel {
   peer: FakeChannel | null = null
@@ -65,6 +65,32 @@ test('a message that never ends is dropped past 64 MB and the next one still arr
   expect(received.length).toBe(0)
   a.send(new Uint8Array([1, 2, 3]))
   expect(received.map(m => [...m])).toEqual([[1, 2, 3]])
+})
+
+test('failed is hidden until the connection has connected once; every other state passes through', () => {
+  expect(shownState('failed', false, 'disconnected')).toBe('disconnected')
+  expect(shownState('failed', false, 'connecting')).toBe('connecting')
+  expect(shownState('failed', true, 'disconnected')).toBe('failed')
+  for (const s of ['new', 'checking', 'connected', 'completed', 'disconnected', 'closed'])
+    for (const ever of [false, true]) expect(shownState(s, ever, 'x')).toBe(s)
+})
+
+test('frames on an adopted channel reach the handler of the wrapped own channel as whole messages', () => {
+  const rawOwn = new FakeChannel(), incoming = new FakeChannel(), rawFar = new FakeChannel()
+  rawFar.peer = incoming // the other side sends on the channel it created; here that arrives as `incoming`
+  const own = wrapChannel(rawOwn), far = wrapChannel(rawFar)
+  const received: Uint8Array[] = []
+  own.onmessage = e => { received.push(new Uint8Array(e.data)) }
+  adoptChannel(rawOwn, incoming)
+  expect(incoming.binaryType).toBe('arraybuffer')
+  const sent = [bytes(5, 1), bytes(2 * FRAME_MAX + 1, 2)]
+  for (const m of sent) far.send(m)
+  expect(rawFar.frames.length).toBe(1 + 3)
+  expect(received.length).toBe(2)
+  sent.forEach((m, i) => expect(Buffer.from(received[i]!).equals(Buffer.from(m))).toBe(true))
+  own.onmessage = null
+  far.send(bytes(5, 3))
+  expect(received.length).toBe(2)
 })
 
 test('chunkingWrtc is a function, so nothing touches a WebRTC global at import time', () => {

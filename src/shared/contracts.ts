@@ -1,7 +1,7 @@
 import type * as Y from 'yjs'
 import type { Awareness } from 'y-protocols/awareness'
 
-export type RoomKeys = { secret: string; topic: string; password: string }
+export type RoomKeys = { secret: string; topic: string; password: string; relayKey: CryptoKey }
 
 export type User = { name: string; color: string }
 export type Peer = { clientId: number; user: User; self: boolean }
@@ -57,9 +57,25 @@ export type Session = { start(): void; stop(): void; view(): RunView; onChange(c
 
 // 'failed': boot threw (for example a browser with WebRTC switched off); blocking, like 'insecure'.
 // 'code-limit' and 'copy-failed' report something that just happened and go away by themselves (Ui.flash).
-export type Notice = 'insecure' | 'bad-link' | 'failed' | 'no-isolation' | 'offline' | 'stuck' | 'code-limit' | 'copy-failed' | null
+export type Notice = 'insecure' | 'bad-link' | 'failed' | 'no-isolation' | 'offline' | 'code-limit' | 'copy-failed' | null
 // Where this browser's copy of the compiler files stands before its first Run. 'on-run': the first Run downloads them.
 export type CompilerFiles = 'on-run' | 'fetching' | 'ready'
-export type UiState = { peers: Peer[]; net: NetStatus; run: RunView; notice: Notice; canRun: boolean; compiler: CompilerFiles }
-export type UiHandlers = { run(): void; stop(): void; rename(name: string): void; newRoom(): void; themeChanged(): void }
+export type UiState = { peers: Peer[]; net: NetStatus; run: RunView; notice: Notice; canRun: boolean; compiler: CompilerFiles; ai: AiView }
+// ai(): the #ai button was activated. aiEscape(): Escape was pressed on it.
+export type UiHandlers = { run(): void; stop(): void; rename(name: string): void; newRoom(): void; themeChanged(): void; ai(): void; aiEscape(): void }
 export type Ui = { editorHost: HTMLElement; terminalHost: HTMLElement; render(s: UiState): void; flash(notice: 'code-limit' | 'copy-failed'): void }
+
+// POST /ai, offered only when GET /config says `ai: true`. `before` and `after` are main.cpp around the place of the
+// deleted `??? ` line; cut[0] and cut[1] say that text before and after that window was left out.
+export type AiRequest = { prompt: string; before: string; after: string; cut: [boolean, boolean] }
+export type AiError = 'limit' | 'day-limit' | 'busy' | 'refused' | 'too-long' | 'failed'
+export type AiReply = { code: string } | { error: AiError }
+// The requester's own view of its one request. 'off': the server offers no generation. `nudge` grows each time
+// another prompt was turned away because this one is pending, so the status is announced again. `noRoom`: the
+// code was not inserted because main.cpp would pass its size limit with it; the result is kept, and each such try raises `nudge` too.
+export type AiView =
+  | { state: 'off' }
+  | { state: 'idle'; last?: 'inserted' | 'discarded' }
+  | { state: 'working'; partial: boolean; nudge: number }
+  | { state: 'ready'; nudge: number; noRoom?: true }
+  | { state: 'failed'; why: AiError | 'prompt' }

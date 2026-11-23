@@ -12,6 +12,11 @@
       "matchPackageNames": ["yjs", "y-codemirror.next", "y-webrtc", "y-protocols", "@yowasp/clang"],
       "automerge": false,
       "groupName": "collaboration and compiler internals"
+    },
+    {
+      "description": "The tests fake the Anthropic API, so CI cannot tell whether a new SDK still sends a request the real API accepts; a person sends one real request first",
+      "matchPackageNames": ["@anthropic-ai/sdk"],
+      "automerge": false
     }
   ]
 }

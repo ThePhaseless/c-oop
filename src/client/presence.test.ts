@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import { COLOR_RE, NAME_MAX, PEER_COLORS } from '../shared/limits'
 import { ANIMALS } from './strings'
-import { createConnWatch, guardAwareness, loadIdentity, sanitizeCursor, sanitizeName, sanitizeUser, saveIdentity } from './presence'
+import { createConnWatch, createRetry, guardAwareness, loadIdentity, sanitizeCursor, sanitizeName, sanitizeUser, saveIdentity } from './presence'
 
 const HOSTILE_COLOR = 'red;background:url(//x)'
 
@@ -244,5 +244,31 @@ describe('createConnWatch', () => {
     expect(w(33_000, [off('a')]).stuck).toBe(0)
     expect(w(44_999, [off('a')]).stuck).toBe(0)
     expect(w(45_000, [off('a')]).stuck).toBe(1)
+  })
+})
+
+describe('createRetry', () => {
+  const on = (id: string) => ({ id, connected: true })
+  const off = (id: string) => ({ id, connected: false })
+
+  test('an unconnected id is returned after 48 s, then 96, 192, 384 and 384 s again', () => {
+    const r = createRetry(48_000, 3)
+    let t = 0
+    for (const wait of [48_000, 96_000, 192_000, 384_000, 384_000]) {
+      expect(r(t, [off('a')])).toEqual([]) // a new connection object: the wait starts here
+      expect(r(t + wait - 1, [off('a')])).toEqual([])
+      expect(r(t + wait, [off('a')])).toEqual(['a'])
+      t += wait + 2000
+    }
+  })
+  test('a connected id resets the wait, and ids wait independently', () => {
+    const r = createRetry(48_000, 3)
+    r(0, [off('a')])
+    expect(r(48_000, [off('a'), off('b')])).toEqual(['a'])
+    expect(r(50_000, [on('a'), off('b')])).toEqual([])
+    r(60_000, [off('a'), off('b')])
+    expect(r(96_000, [off('a'), off('b')])).toEqual(['b'])
+    expect(r(107_999, [off('a')])).toEqual([])
+    expect(r(108_000, [off('a')])).toEqual(['a']) // 48 s again, not 96
   })
 })

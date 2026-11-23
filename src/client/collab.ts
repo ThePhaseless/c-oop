@@ -5,7 +5,9 @@
 //   room.webrtcConns                   Map<peerId, WebrtcConn>; an entry is removed only when its peer closes
 //   conn.remotePeerId, conn.connected  identity and state of one connection (`connect` emits no event)
 //   conn.destroy()                     closes the peer; y-webrtc then drops the entry and announces again
-//   provider.signalingConns[0].connected
+//   provider.signalingConns[0]         the signaling socket (lib0 WebsocketClient), also the relay's socket: `connected`,
+//                                      `ws`, `send`, `on`, `off`; `message` is emitted for every message, `pong` included
+// y-webrtc ignores message types it does not know, so the relay's `relay` messages pass it by.
 // provider.disconnect() clears the local awareness state, so it is never called while the room is in use,
 // only when the document is destroyed.
 import * as Y from 'yjs'
@@ -13,9 +15,10 @@ import { Awareness } from 'y-protocols/awareness'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import { WebrtcProvider } from 'y-webrtc'
 import type { Collab, NetStatus, Peer, RoomKeys } from '../shared/contracts'
-import { CONN_FORGET_MS, CONN_RETRY_MS, STUCK_MS } from '../shared/limits'
+import { CONN_FORGET_MS, CONN_RETRY_DOUBLINGS, CONN_RETRY_MS, RELAY_START_MS, STUCK_MS } from '../shared/limits'
 import { chunkingWrtc } from './chunking'
-import { createConnWatch, guardAwareness, loadIdentity, sanitizeName, sanitizeUser, saveIdentity } from './presence'
+import { createConnWatch, createRetry, guardAwareness, loadIdentity, sanitizeName, sanitizeUser, saveIdentity } from './presence'
+import { createRelay } from './relay'
 import { guardText } from './text-guard'
 
 const TICK_MS = 2000
@@ -34,8 +37,9 @@ export function createCollab(o: { keys: RoomKeys; iceServers: RTCIceServer[]; si
   saveIdentity(identity) // keeps a random identity across reloads
 
   // The local copy is optional: without IndexedDB (private mode, blocked storage) the room still works.
+  let stored: IndexeddbPersistence | undefined
   if (typeof indexedDB !== 'undefined') {
-    try { new IndexeddbPersistence('c-oop-' + o.keys.topic, doc).whenSynced.catch(() => {}) } catch { /* optional */ }
+    try { stored = new IndexeddbPersistence('c-oop-' + o.keys.topic, doc) } catch { /* optional */ }
   }
 
   const provider = new WebrtcProvider(o.keys.topic, doc, {
@@ -44,8 +48,27 @@ export function createCollab(o: { keys: RoomKeys; iceServers: RTCIceServer[]; si
     awareness,
     peerOpts: { config: { iceServers: o.iceServers }, wrtc: chunkingWrtc() },
   })
+
+  // The relay starts once the stored copy has loaded, so its first request already names what this browser holds;
+  // after RELAY_START_MS without it. A copy that loads later restarts the relay, which asks the room again.
+  let relay: { destroy(): void } | undefined
+  let destroyed = false
+  const startRelay = () => {
+    if (destroyed) return
+    relay?.destroy()
+    relay = createRelay({ doc, awareness, topic: o.keys.topic, key: o.keys.relayKey, socket: provider.signalingConns[0] })
+  }
+  const relayTimer = setTimeout(startRelay, RELAY_START_MS)
+  ;(stored ? stored.whenSynced : Promise.resolve()).then(() => { clearTimeout(relayTimer); startRelay() }, () => {})
+
+  // The relay goes first: provider.disconnect() clears the own awareness state, and nothing may be sent for it.
   // provider.destroy() leaves the signaling socket open, and y-webrtc would announce this page again on it.
-  doc.on('destroy', () => provider.disconnect())
+  doc.on('destroy', () => {
+    destroyed = true
+    clearTimeout(relayTimer)
+    relay?.destroy()
+    provider.disconnect()
+  })
 
   if (o.isNew) text.insert(0, o.template)
 
@@ -59,18 +82,16 @@ export function createCollab(o: { keys: RoomKeys; iceServers: RTCIceServer[]; si
     ...watch(Date.now(), conns().map(c => ({ id: c.remotePeerId, connected: c.connected }))),
   })
 
-  // simple-peer never gives up on an unanswered offer, so a connection that stays unconnected is
-  // destroyed; y-webrtc announces again, and a peer that has left does not come back.
-  const unconnectedSince = new WeakMap<object, number>()
+  // A connection that never connected stays as it is, also after ICE failed (chunking.ts hides that state from
+  // simple-peer). This retry is the only thing that replaces it: the connection is destroyed, y-webrtc announces
+  // again, and a peer that has left does not come back. The wait doubles per failed attempt for the same peer id;
+  // the longest one (384 s) is how long such an entry outlives a person who has left.
+  const retry = createRetry(CONN_RETRY_MS, CONN_RETRY_DOUBLINGS)
   let last = ''
   const tick = () => {
-    const now = Date.now()
-    const stale = conns().filter(c => {
-      if (c.connected) { unconnectedSince.delete(c); return false }
-      if (!unconnectedSince.has(c)) unconnectedSince.set(c, now)
-      return now - unconnectedSince.get(c)! >= CONN_RETRY_MS
-    })
-    for (const c of stale) c.destroy()
+    const all = conns()
+    const stale = new Set(retry(Date.now(), all.map(c => ({ id: c.remotePeerId, connected: c.connected }))))
+    for (const c of all) if (stale.has(c.remotePeerId)) c.destroy()
     // Neither a data-channel connect nor a signaling change emits a provider event, so compare and notify here.
     const status = JSON.stringify(net())
     if (status !== last) { last = status; notify() }

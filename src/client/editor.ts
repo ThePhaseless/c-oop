@@ -9,8 +9,11 @@ import { tags as t } from '@lezer/highlight'
 import { basicSetup } from 'codemirror'
 import { yCollab, yRemoteSelections, yUndoManagerKeymap } from 'y-codemirror.next'
 import type { Awareness } from 'y-protocols/awareness'
-import type * as Y from 'yjs'
+import * as Y from 'yjs'
+import { CODE_MAX } from '../shared/limits'
+import { aiWindow, parseTrigger, type AiJob } from './ai'
 import { EDITOR_LABEL, EDITOR_PLACEHOLDER } from './strings'
+import { cppCompletion } from './completion'
 import { codeLimit } from './text-guard'
 
 const HINT_ID = 'editor-hint' // the Esc-then-Tab hint in the pane header (index.html)
@@ -131,17 +134,42 @@ const caretNameFix = EditorView.updateListener.of(update => {
 // All a caret widget knows of its peer, so two people with the same name and colour show their names together.
 const peerKey = (user: CaretWidget) => `${user.color}\n${user.name}`
 
-export function createEditor(host: HTMLElement, o: { text: Y.Text; awareness: Awareness }): { focus(): void; text(): string } {
+// `ai`: the `??? <prompt>` snippets (ai.ts); without it Enter does what it always did.
+export function createEditor(
+  host: HTMLElement,
+  o: { text: Y.Text; awareness: Awareness; ai?: { accepts(prompt: string): boolean; submit(job: AiJob): void } },
+): { focus(): void; text(): string; insert(at: Y.RelativePosition, code: string): boolean } {
+  const { ai } = o
+  // The manager yCollab would make itself, made here so that a snippet's two edits can each be an undo step.
+  const undo = new Y.UndoManager(o.text)
+  // Enter on a `??? <prompt>` line: the line goes, for everyone, and the prompt is sent off.
+  const aiEnter = (view: EditorView): boolean => {
+    const { main, ranges } = view.state.selection
+    if (!ai || view.composing || ranges.length !== 1 || !main.empty) return false
+    const line = view.state.doc.lineAt(main.head)
+    const trigger = parseTrigger(line.text)
+    if (!trigger) return false
+    if (!ai.accepts(trigger.prompt)) return true // the line stays
+    const { del, ...around } = aiWindow(view.state.doc.toString(), line.from, line.to)
+    undo.stopCapturing() // an undo step of its own: undo brings back the whole line, not the line less its last words
+    view.dispatch({ changes: del, userEvent: 'delete.ai' })
+    // -1 ties the place to the character before it, so what a peer types there lands after the inserted code.
+    const at = Y.createRelativePositionFromTypeIndex(o.text, del.from, -1)
+    ai.submit({ request: { prompt: trigger.prompt, ...around }, indent: trigger.indent, at })
+    return true
+  }
   const named = new Map<string, number>() // peers whose caret shows its name, each with the time (performance.now) that ends it
   const view: EditorView = new EditorView({
     parent: host,
     state: EditorState.create({
       doc: o.text.toString(),
       extensions: [
+        ai ? Prec.highest(keymap.of([{ key: 'Enter', run: aiEnter }])) : [], // first: ahead of the completion popup's Enter
         keymap.of([...yUndoManagerKeymap, indentWithTab]), // before basicSetup: shared undo wins over local history
         basicSetup,
         cpp(),
-        yCollab(o.text, o.awareness),
+        cppCompletion,
+        yCollab(o.text, o.awareness, { undoManager: undo }),
         Prec.highest(codeLimit(o.text)), // the last filter to run: it has to see what the others (the re-indent on `}`) add
         caretNameFix,
         EditorView.updateListener.of(() => { if (named.size) markNamed() }), // an update may have drawn the carets anew
@@ -244,5 +272,16 @@ export function createEditor(host: HTMLElement, o: { text: Y.Text; awareness: Aw
   view.contentDOM.addEventListener('mouseover', e => {
     if ((e.target as Element).closest('.cm-ySelectionCaret')) view.requestMeasure(fit)
   })
-  return { focus: () => view.focus(), text: () => view.state.doc.toString() }
+  // Through the editor, so shared undo holds for generated code as for typed code. False: nothing was inserted.
+  function insert(at: Y.RelativePosition, code: string): boolean {
+    const abs = Y.createAbsolutePositionFromRelativePosition(at, o.text.doc!)
+    if (!abs || abs.type !== o.text) return false
+    const pos = Math.min(abs.index, view.state.doc.length)
+    const text = (pos > 0 && view.state.sliceDoc(pos - 1, pos) !== '\n' ? '\n' : '') + code + '\n'
+    if (view.state.doc.length + text.length > CODE_MAX) return false // codeLimit would cut the code off, or drop it whole
+    undo.stopCapturing() // one undo step takes the code out again
+    view.dispatch({ changes: { from: pos, insert: text }, effects: EditorView.scrollIntoView(pos), userEvent: 'input.ai' })
+    return true
+  }
+  return { focus: () => view.focus(), text: () => view.state.doc.toString(), insert }
 }

@@ -1,6 +1,7 @@
 // Boot sequence and wiring. The only file that uses __TOOLCHAIN_ID__.
-import type { Collab, CompilerFiles, NetStatus, Notice, RunView, Session, Term, UiState } from '../shared/contracts'
-import { DEFAULT_ICE } from '../shared/limits'
+import type { AiError, AiReply, AiRequest, Collab, CompilerFiles, NetStatus, Notice, RunView, Session, Term, UiState } from '../shared/contracts'
+import { AI, DEFAULT_ICE } from '../shared/limits'
+import { createAi, doubleControl } from './ai'
 import { createCollab } from './collab'
 import { createCpp } from './cpp/cpp'
 import { createEditor } from './editor'
@@ -18,9 +19,11 @@ declare global {
 const OFFLINE_MS = 5000 // signaling down this long shows the 'offline' notice
 const IDLE: RunView = { phase: 'idle', runnerName: '', mine: false, exit: null, progress: null, stdinWaiting: false }
 const NO_NET: NetStatus = { signaling: false, connected: 0, stuck: 0 }
+const AI_ERRORS: readonly AiError[] = ['limit', 'day-limit', 'busy', 'refused', 'too-long', 'failed']
 
 // The handlers exist before the objects they act on, so they read these at call time.
 let collab: Collab | undefined, session: Session | undefined, term: Term | undefined
+let ai: ReturnType<typeof createAi> | undefined // stays undefined where the server offers no generation
 
 const ui = mountUi({
   run: () => session?.start(),
@@ -28,8 +31,10 @@ const ui = mountUi({
   rename: name => collab?.setName(name),
   newRoom: () => { location.hash = '' }, // the hashchange listener below reloads into a fresh room
   themeChanged: () => term?.setTheme(),
+  ai: () => ai?.press(),
+  aiEscape: () => void ai?.escape(),
 })
-const blocked = (notice: Notice) => ui.render({ peers: [], net: NO_NET, run: IDLE, notice, canRun: false, compiler: 'on-run' })
+const blocked = (notice: Notice) => ui.render({ peers: [], net: NO_NET, run: IDLE, notice, canRun: false, compiler: 'on-run', ai: { state: 'off' } })
 let failed = false // boot threw: the blocking notice stays, whatever re-renders later
 
 async function boot() {
@@ -43,7 +48,7 @@ async function boot() {
     isNew = true
   } else if (!(secret = parseSecret(location.hash))) return blocked('bad-link')
 
-  const config = fetch('/config').then(r => (r.ok ? r.json() : null)).catch(() => null) as Promise<{ iceServers?: unknown } | null>
+  const config = fetch('/config').then(r => (r.ok ? r.json() : null)).catch(() => null) as Promise<{ iceServers?: unknown; ai?: unknown } | null>
   const [keys, cfg] = await Promise.all([deriveRoom(secret), config])
   const offered = Array.isArray(cfg?.iceServers) ? (cfg.iceServers as RTCIceServer[]) : DEFAULT_ICE
   new RTCPeerConnection().close() // WebRTC missing or blocked: boot throws here and the page shows the 'failed' notice
@@ -85,8 +90,8 @@ async function boot() {
       clearTimeout(offlineTimer)
       if (downSince !== null && downFor < OFFLINE_MS) offlineTimer = setTimeout(render, OFFLINE_MS - downFor)
       const run = session?.view() ?? IDLE
-      const notice: Notice = !canRun() ? 'no-isolation' : downFor >= OFFLINE_MS ? 'offline' : net.stuck > 0 ? 'stuck' : null
-      const state: UiState = { peers: c.peers(), net, run, notice, canRun: canRun() && (run.phase === 'idle' || run.phase === 'done'), compiler }
+      const notice: Notice = !canRun() ? 'no-isolation' : downFor >= OFFLINE_MS ? 'offline' : null
+      const state: UiState = { peers: c.peers(), net, run, notice, canRun: canRun() && (run.phase === 'idle' || run.phase === 'done'), compiler, ai: ai?.view() ?? { state: 'off' } }
       ui.render(state)
     })
   }
@@ -102,7 +107,23 @@ async function boot() {
     }
   }, true)
 
-  const editor = createEditor(ui.editorHost, { text: c.text, awareness: c.awareness })
+  // `??? <prompt>` snippets, where the server has a key for them.
+  if (cfg?.ai === true) {
+    const post = async (r: AiRequest): Promise<AiReply> => {
+      const res = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r), signal: AbortSignal.timeout(AI.clientMs) })
+      const body = await res.json().catch(() => null) as { code?: unknown; error?: unknown } | null // the JSON whatever the status
+      if (typeof body?.code === 'string') return { code: body.code }
+      const error = AI_ERRORS.find(e => e === body?.error)
+      return { error: error ?? 'failed' }
+    }
+    const a = ai = createAi({ post, insert: (at, code) => editor.insert(at, code), onChange: render })
+    // Control twice inserts a ready result. Capture phase: the Ctrl+Enter handler above stops its events.
+    const twice = doubleControl(AI.doubleTapMs)
+    for (const type of ['keydown', 'keyup', 'pointerdown', 'blur']) {
+      window.addEventListener(type, e => { if (twice(e, performance.now())) a.insert() }, true)
+    }
+  }
+  const editor = createEditor(ui.editorHost, { text: c.text, awareness: c.awareness, ai })
   const t = term = await createTerminal(ui.terminalHost)
   const cpp = createCpp({
     toolchainBase: new URL('/toolchain/' + __TOOLCHAIN_ID__ + '/', location.href).href,

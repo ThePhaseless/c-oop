@@ -1,5 +1,6 @@
 // Every UI string. Text only: callers add colours and escape codes.
-import type { CompilerFiles, Exit, Notice, RunView } from '../shared/contracts'
+import type { AiView, CompilerFiles, Exit, Notice, RunView } from '../shared/contracts'
+import { AI } from '../shared/limits'
 
 export const APP_NAME = 'c-oop'
 export const FILE_NAME = 'main.cpp'
@@ -8,8 +9,9 @@ const people = (n: number) => (n === 1 ? 'person' : 'people')
 
 export const NET_CONNECTING = 'Connecting'
 export const NET_ALONE = 'You are alone here. Send the link to invite others.'
-/** `count` includes the local user. */
-export const netPeers = (count: number) => `In room: ${count} ${people(count)}`
+export const NET_RELAYED = 'No direct connection to some people here. Their changes arrive through the server.'
+/** `count` includes the local user. `relayed`: the short form of NET_RELAYED, which stays as the tooltip. */
+export const netPeers = (count: number, relayed = false) => `In room: ${count} ${people(count)}${relayed ? ' (via the server)' : ''}`
 
 export const SELF_SUFFIX = '(you)'
 export const PEERS_LABEL = 'People in the room'
@@ -26,15 +28,14 @@ export const COPY_DONE = 'Copied'
 export const THEME_TOGGLE = 'Switch between light and dark theme'
 export const NEW_ROOM = 'Create a new room'
 
-/** `stuck` is used only by the 'stuck' notice. Returns '' for null. */
-export function noticeText(notice: Notice, stuck = 1): string {
+/** Returns '' for null. */
+export function noticeText(notice: Notice): string {
   switch (notice) {
     case 'insecure': return 'This page works only over HTTPS or on localhost. Open it at an address that starts with https://'
     case 'bad-link': return 'This room link is incomplete or damaged.'
     case 'failed': return 'The page could not start. Reload it. If that does not help, check whether the browser or one of its extensions blocks WebRTC.'
     case 'no-isolation': return 'Running programs is turned off because the server does not send the COOP and COEP headers. Editing works as usual.'
     case 'offline': return 'No connection to the server. You are editing locally; changes will be sent when the connection is back.'
-    case 'stuck': return `Could not connect to ${stuck} ${people(stuck)} in this room. The usual cause is the network, for example a school or company one. The site administrator can add a TURN server.`
     // The two below are shown for a few seconds after the event (ui.ts), never as a standing state.
     case 'code-limit': return 'main.cpp can have at most a million characters. The text that did not fit was cut off.'
     case 'copy-failed': return 'Could not copy the link. Copy the address from the browser\'s address bar.'
@@ -46,6 +47,45 @@ export const EDITOR_LABEL = 'Code editor, main.cpp'
 export const EDITOR_PLACEHOLDER = 'Empty file. If someone has this room open, the code will appear once you connect. You can also start typing.'
 /** Shown in the editor's header while focus is inside the pane, and the editor's description for assistive tech. */
 export const EDITOR_TAB_HINT = 'Esc, then Tab: leave the editor'
+
+// `??? <prompt>` snippets. The prompt line is gone by the time a request fails, hence AI_UNDO.
+const AI_UNDO = ' Undo brings the prompt line back.'
+/** Text and accessible name of the `#ai` button; '' while it is hidden. */
+export function aiLabel(v: AiView): string {
+  if (v.state === 'working') return 'Generating…'
+  if (v.state === 'ready') return 'Insert code'
+  if (v.state !== 'failed') return ''
+  switch (v.why) {
+    case 'limit': return 'Too many requests'
+    case 'day-limit': return 'Daily limit reached'
+    case 'busy': return 'Busy, try again'
+    case 'refused': return 'No code for that'
+    case 'too-long': return 'Answer too long'
+    case 'prompt': return 'Prompt too long'
+    case 'failed': return 'Generation failed'
+  }
+}
+/** The sentence for the `#ai` button's tooltip and its live region. */
+export function aiStatus(v: AiView): string {
+  switch (v.state) {
+    case 'off': return ''
+    case 'idle': return v.last === 'inserted' ? 'Generated code inserted.' : v.last === 'discarded' ? 'Generated code discarded.' : ''
+    case 'working': return 'Generating code for your prompt.' + (v.partial ? ' Only the part of main.cpp around that line was sent.' : '')
+    case 'ready':
+      if (v.noRoom) return 'The generated code does not fit: main.cpp can have at most a million characters. Delete some text and insert again.'
+      return 'Generated code is ready. Press Ctrl twice or use this button to insert it. Esc on this button discards it.'
+    case 'failed': break
+  }
+  switch (v.why) {
+    case 'limit': return 'Too many prompts came from your network in the last minutes. Wait a few minutes and try again.' + AI_UNDO
+    case 'day-limit': return 'Today\'s limit of generated snippets is used up. It starts over at midnight UTC.' + AI_UNDO
+    case 'busy': return 'The code generator is busy or took too long. Try again in a moment.' + AI_UNDO
+    case 'refused': return 'No code came back for that prompt. Ask for C++ code for this file.' + AI_UNDO
+    case 'too-long': return 'The answer was too long and was not inserted. Ask for a smaller piece of code.' + AI_UNDO
+    case 'prompt': return `The prompt is too long. Shorten it to at most ${AI.promptMax} characters and press Enter again.`
+    case 'failed': return 'The code could not be generated. Try again.' + AI_UNDO
+  }
+}
 
 export const TERMINAL_LABEL = 'Program terminal'
 export const TERMINAL_TITLE = 'Terminal'
