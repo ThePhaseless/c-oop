@@ -212,7 +212,7 @@ button, input { font: inherit; font-variation-settings: inherit; color: inherit;
   border-bottom: 1px solid var(--line);
 }
 #notice-text { max-width: 75ch; }
-#notice[data-kind="stuck"], #notice[data-kind="code-limit"], #notice[data-kind="copy-failed"] { color: var(--warn); }
+#notice[data-kind="code-limit"], #notice[data-kind="copy-failed"] { color: var(--warn); }
 #notice[data-kind="insecure"], #notice[data-kind="bad-link"], #notice[data-kind="failed"] { color: var(--margin); font-weight: 600; }
 /* not the notice's red: a red outlined button reads as Stop */
 #new-room { color: var(--ink); }

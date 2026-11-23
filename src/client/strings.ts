@@ -8,8 +8,9 @@ const people = (n: number) => (n === 1 ? 'person' : 'people')
 
 export const NET_CONNECTING = 'Connecting'
 export const NET_ALONE = 'You are alone here. Send the link to invite others.'
-/** `count` includes the local user. */
-export const netPeers = (count: number) => `In room: ${count} ${people(count)}`
+export const NET_RELAYED = 'No direct connection to some people here. Their changes arrive through the server.'
+/** `count` includes the local user. `relayed`: the short form of NET_RELAYED, which stays as the tooltip. */
+export const netPeers = (count: number, relayed = false) => `In room: ${count} ${people(count)}${relayed ? ' (via the server)' : ''}`
 
 export const SELF_SUFFIX = '(you)'
 export const PEERS_LABEL = 'People in the room'
@@ -26,15 +27,14 @@ export const COPY_DONE = 'Copied'
 export const THEME_TOGGLE = 'Switch between light and dark theme'
 export const NEW_ROOM = 'Create a new room'
 
-/** `stuck` is used only by the 'stuck' notice. Returns '' for null. */
-export function noticeText(notice: Notice, stuck = 1): string {
+/** Returns '' for null. */
+export function noticeText(notice: Notice): string {
   switch (notice) {
     case 'insecure': return 'This page works only over HTTPS or on localhost. Open it at an address that starts with https://'
     case 'bad-link': return 'This room link is incomplete or damaged.'
     case 'failed': return 'The page could not start. Reload it. If that does not help, check whether the browser or one of its extensions blocks WebRTC.'
     case 'no-isolation': return 'Running programs is turned off because the server does not send the COOP and COEP headers. Editing works as usual.'
     case 'offline': return 'No connection to the server. You are editing locally; changes will be sent when the connection is back.'
-    case 'stuck': return `Could not connect to ${stuck} ${people(stuck)} in this room. The usual cause is the network, for example a school or company one. The site administrator can add a TURN server.`
     // The two below are shown for a few seconds after the event (ui.ts), never as a standing state.
     case 'code-limit': return 'main.cpp can have at most a million characters. The text that did not fit was cut off.'
     case 'copy-failed': return 'Could not copy the link. Copy the address from the browser\'s address bar.'

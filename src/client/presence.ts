@@ -99,3 +99,28 @@ export function createConnWatch(stuckMs: number, forgetMs: number): (now: number
     return { connected, stuck }
   }
 }
+
+/**
+ * Says which unconnected connections to destroy so that y-webrtc starts them again. The wait for one peer id is
+ * baseMs and doubles with every attempt that failed, at most `doublings` times; a connection that connects resets it.
+ */
+export function createRetry(baseMs: number, doublings: number): (now: number, conns: { id: string; connected: boolean }[]) => string[] {
+  const waits = new Map<string, { since?: number; fails: number }>()
+  return (now, conns) => {
+    const due: string[] = []
+    for (const c of conns) {
+      if (c.connected) { waits.delete(c.id); continue }
+      // shortcut: ids of peers that left are never removed one by one, so the whole map is dropped when it is large (every wait starts over at baseMs); upgrade to dropping the oldest when rooms have hundreds of peer ids.
+      if (!waits.has(c.id) && waits.size >= 256) waits.clear()
+      const w = waits.get(c.id) ?? { fails: 0 }
+      waits.set(c.id, w)
+      w.since ??= now
+      if (now - w.since >= baseMs * 2 ** Math.min(w.fails, doublings)) {
+        due.push(c.id)
+        w.fails++
+        w.since = undefined // the next connection object for this id starts a new wait
+      }
+    }
+    return due
+  }
+}

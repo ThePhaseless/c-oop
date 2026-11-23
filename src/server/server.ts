@@ -3,7 +3,7 @@
 // line (name and message) per internal error. A file error names the file under dist; no request URL,
 // topic or payload is ever logged.
 import { DEFAULT_ICE, SIGNAL } from '../shared/limits.ts'
-import { type ConnState, handle, newConn } from './signal.ts'
+import { type ConnState, handle, newConn, sweep, type TopicBuckets } from './signal.ts'
 import { badRequest, loadStatic, methodAllowed, notAllowed, pathOf, reply, SECURITY_HEADERS, serveStatic } from './static.ts'
 
 export type ServerOptions = { port: number; distDir: string; iceServers: unknown[] }
@@ -11,6 +11,9 @@ export type ServerOptions = { port: number; distDir: string; iceServers: unknown
 export async function createServer(o: ServerOptions): Promise<Bun.Server<ConnState>> {
   const table = await loadStatic(o.distDir)
   const config = JSON.stringify({ iceServers: o.iceServers })
+  // The only state besides the static table and the live connections: two byte counters per topic that has
+  // subscribers (signal.ts), removed when the last one leaves.
+  const topics: TopicBuckets = new Map()
   const server = Bun.serve<ConnState>({
     port: o.port,
     development: false,
@@ -39,12 +42,21 @@ export async function createServer(o: ServerOptions): Promise<Bun.Server<ConnSta
       closeOnBackpressureLimit: true,
       perMessageDeflate: false,
       message(ws, raw) {
-        for (const a of handle(ws.data, raw, Date.now(), topic => server.subscriberCount(topic))) {
+        const subscribers = (topic: string) => server.subscriberCount(topic)
+        for (const a of handle(ws.data, raw, Date.now(), subscribers, topics)) {
           if (a.do === 'close') ws.close(a.code, a.reason)
           else if (a.do === 'send') ws.send(a.message)
           else if (a.do === 'publish') ws.publish(a.topic, a.message) // not echoed to the sender
-          else ws[a.do](a.topic)
+          else {
+            ws[a.do](a.topic)
+            if (a.do === 'unsubscribe') sweep(topics, subscribers, [a.topic])
+          }
         }
+      },
+      close(ws) {
+        // after the close, so it does not matter whether Bun still counts this socket inside the handler
+        const left = [...ws.data.topics]
+        setTimeout(() => sweep(topics, topic => server.subscriberCount(topic), left), 0)
       },
     },
   })

@@ -9,6 +9,8 @@ import { compilerNote, exitLine, noticeText, TEMPLATE } from '../src/client/stri
 import { CODE_MAX, STUCK_MS } from '../src/shared/limits.ts'
 import { booted, count, done, exit, Fatal, focusTerminal, net, openPeer, type Peer, type PeerOpts, phase, prompted, room, screen, setCode, start, startApp, status, storedRun, text, waitFor } from './harness.ts'
 import { BUSY_LOOP, COMPILE_ERROR, ECHO, FLOOD, HELLO, OOP, STDIN, WARNING } from './programs.ts'
+import { CONN_RETRY_MS } from '../src/shared/limits.ts'
+import { NET_RELAYED, netPeers } from '../src/client/strings.ts'
 
 let app: Awaited<ReturnType<typeof startApp>>
 beforeAll(async () => { app = await startApp() })
@@ -380,30 +382,145 @@ scenario('13 runner leaves', async open => {
   expect(await B.page.locator('#run').isEnabled()).toBe(true)
 })
 
-scenario('14 no turn', async open => {
-  // Without a TURN server a relay-only peer connection can never connect.
-  const relayOnly = () => {
+scenario('14 relay without a direct connection', async open => {
+  // Every remote ICE candidate is rewritten to 192.0.2.1 (unroutable): candidates exist and none answers, so ICE
+  // fails after about 15 s, as on a network that blocks direct connections.
+  const blocked = () => {
+    const pcs: { born: number; checking: boolean; failed: boolean }[] = ((window as unknown as { __pcs: unknown }).__pcs = [])
     const Native = window.RTCPeerConnection
     window.RTCPeerConnection = class extends Native {
-      constructor(config?: RTCConfiguration) { super({ ...config, iceTransportPolicy: 'relay' }) }
+      constructor(config?: RTCConfiguration) {
+        super(config)
+        const rec = { born: performance.now(), checking: false, failed: false }
+        pcs.push(rec)
+        this.addEventListener('iceconnectionstatechange', () => {
+          const raw = super.iceConnectionState // read past the app's subclass, which hides 'failed'
+          if (raw === 'checking') rec.checking = true
+          if (raw === 'failed') rec.failed = true
+        })
+        // Chromium reports this failure as connectionState 'failed' while the ICE state only says 'disconnected'.
+        this.addEventListener('connectionstatechange', () => { if (super.connectionState === 'failed') rec.failed = true })
+      }
+      override addIceCandidate(c?: RTCIceCandidateInit | null) {
+        if (c?.candidate) {
+          const parts = c.candidate.split(' ')
+          parts[4] = '192.0.2.1'
+          c = new RTCIceCandidate({ candidate: parts.join(' '), sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex })
+        }
+        return super.addIceCandidate(c)
+      }
     }
   }
-  const A = await open('A', '', { initScript: relayOnly })
-  const B = await open('B', room(A), { initScript: relayOnly })
+  /** The connections of this page that reached ICE `checking`, oldest first. */
+  const checked = async (p: Peer) =>
+    (await p.page.evaluate(() => (window as unknown as { __pcs: { born: number; checking: boolean; failed: boolean }[] }).__pcs))
+      .filter(r => r.checking)
+      .sort((x, y) => x.born - y.born)
+  const netTitle = (p: Peer) => p.page.locator('#net').getAttribute('title')
+
+  const A = await open('A', '', { initScript: blocked })
+  const B = await open('B', room(A), { initScript: blocked })
   const joined = Date.now()
-  const stuck = noticeText('stuck', 1)
-  // (a)
-  await waitFor('A: stuck-peer notice', async () => (await noticeShown(A)) === stuck, 30_000)
-  // (b) the forced retry at about 48 s must not make the notice blink
-  await waitFor('A: notice stays until 65 s after joining', async () => {
+  await sameText(B, TEMPLATE)
+  await waitFor('#peers shows both, on both', async () => (await peerCount(A)) === 2 && (await peerCount(B)) === 2, 10_000)
+
+  // Edits, both ways.
+  await setCode(A, STDIN)
+  await sameText(B, STDIN)
+  await B.page.evaluate(() => window.__coop!.collab.text.insert(0, '// pisze B\n'))
+  await sameText(A, '// pisze B\n' + STDIN)
+
+  // A cursor.
+  await B.page.locator('#editor').click()
+  const bId = await B.page.evaluate(() => window.__coop!.collab.doc.clientID)
+  await waitFor("A: has B's cursor", () => A.page.evaluate(id => !!(window.__coop!.collab.awareness.getStates().get(id) as { cursor?: unknown } | undefined)?.cursor, bId), 10_000)
+
+  // A run with stdin typed on both sides.
+  const id = await start(A)
+  await prompted(A, 'Imie? ')
+  await waitFor("B: sees A's prompt live", async () => (await phase(B)) === 'running' && (await screen(B)).endsWith('Imie? '), 10_000)
+  await focusTerminal(B)
+  await type(B, 'Bartek')
+  await press(B, 'Enter')
+  await prompted(A, 'Miasto? ', 10_000)
+  await focusTerminal(A)
+  await type(A, 'Gdynia')
+  await press(A, 'Enter')
+  await waitFor('A: printed both answers', async () => (await screen(A)).includes('[Bartek|Gdynia]'), 10_000)
+  await press(A, 'Control+d')
+  await done(A, id, 20_000)
+  await done(B, id, 20_000)
+  await sameScreen(B, await screen(A))
+
+  // All of it went through the server, and nobody is told that something is wrong.
+  expect((await net(A)).connected).toBe(0)
+  expect((await net(B)).connected).toBe(0)
+  await waitFor('A: no notice until past the stuck time', async () => {
     const shown = await noticeShown(A)
-    if (shown !== stuck) throw new Fatal(`notice was "${shown}" ${((Date.now() - joined) / 1000).toFixed(1)} s after joining`)
-    return Date.now() - joined >= 65_000
-  }, 70_000)
-  // (c)
+    if (shown !== '') throw new Fatal(`notice was "${shown}" ${((Date.now() - joined) / 1000).toFixed(1)} s after B joined`)
+    return Date.now() - joined >= STUCK_MS + 3000
+  }, STUCK_MS + 5000)
+  await waitFor('A: the people count has the tooltip', async () => (await netTitle(A)) === NET_RELAYED, 30_000)
+  expect(await A.page.locator('#net').textContent()).toBe(netPeers(2, true)) // and says so in its text, for touch and screen readers
+
+  // The failed connection stays until the retry replaces it: no new attempt every 15 s.
+  await waitFor('A, B: a second connection attempt each', async () => (await checked(A)).length >= 2 && (await checked(B)).length >= 2, Math.max(1000, joined + CONN_RETRY_MS + 40_000 - Date.now()))
+  for (const p of [A, B]) {
+    const recs = await checked(p)
+    expect(recs[0]!.failed).toBe(true)
+    for (let i = 1; i < recs.length; i++) expect(recs[i]!.born - recs[i - 1]!.born).toBeGreaterThanOrEqual(CONN_RETRY_MS - 1000)
+  }
+  expect((await net(A)).connected).toBe(0)
+  expect((await net(B)).connected).toBe(0)
+
   expect(B.errors).toEqual([])
   await B.close()
-  await waitFor('A: notice cleared after B left', async () => (await noticeShown(A)) === '' && (await net(A)).stuck === 0, 75_000)
+  await waitFor('A: B left the list', async () => (await peerCount(A)) === 1, 45_000) // the awareness timeout is 30 s
+  await waitFor('A: the tooltip is gone', async () => !(await netTitle(A)), 5000)
+})
+
+// Numbered 29: 28 is taken on another branch.
+scenario('29 both sides offer at once', async open => {
+  // `publish` messages (WebRTC signaling) wait for __release(). The first release lets the announces through and
+  // keeps holding, so each page starts a connection as the offering side and its offer waits; the second release
+  // crosses the two offers. `relay` messages are never sent: only the direct connection can carry data.
+  // (Released in one step, an offer can arrive before the other page has made its own; that page then drops its
+  // connection and the pair stays unconnected until the retry.)
+  const together = () => {
+    const w = window as unknown as { __held: (() => void)[]; __release(all: boolean): void; __dc: number }
+    w.__held = []
+    w.__dc = 0
+    let open = false
+    w.__release = all => { open = all; for (const send of w.__held.splice(0)) send() }
+    const NativeWS = window.WebSocket
+    window.WebSocket = class extends NativeWS {
+      override send(data: Parameters<WebSocket['send']>[0]) {
+        const s = String(data)
+        if (s.startsWith('{"type":"relay"')) return
+        if (!open && s.startsWith('{"type":"publish"')) { w.__held.push(() => super.send(data)); return }
+        super.send(data)
+      }
+    }
+    const create = RTCPeerConnection.prototype.createDataChannel
+    RTCPeerConnection.prototype.createDataChannel = function (...args) { w.__dc++; return create.apply(this, args) }
+  }
+  type Held = { __held: unknown[]; __release(all: boolean): void; __dc: number }
+  const held = (p: Peer) => p.page.evaluate(() => (window as unknown as Held).__held.length)
+  const dc = (p: Peer) => p.page.evaluate(() => (window as unknown as Held).__dc)
+  const release = (all: boolean) => Promise.all([A, B].map(p => p.page.evaluate(a => (window as unknown as Held).__release(a), all)))
+  const A = await open('A', '', { initScript: together })
+  const B = await open('B', room(A), { initScript: together })
+  await waitFor('A, B: an announce is held', async () => (await held(A)) >= 1 && (await held(B)) >= 1, 10_000)
+  await release(false)
+  await waitFor('A, B: an offer is held', async () => (await dc(A)) >= 1 && (await dc(B)) >= 1 && (await held(A)) >= 1 && (await held(B)) >= 1, 10_000)
+  await release(true)
+  await connected(A, B)
+  await sameText(B, TEMPLATE) // A to B
+  await B.page.evaluate(() => window.__coop!.collab.text.insert(0, '// pisze B\n'))
+  await sameText(A, '// pisze B\n' + TEMPLATE) // B to A
+  // One data channel made on each page: both offered, and that first connection is the one that carries the text.
+  expect(await dc(A)).toBe(1)
+  expect(await dc(B)).toBe(1)
 })
 
 scenario('15 toolchain caching', async open => {

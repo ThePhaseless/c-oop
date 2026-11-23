@@ -186,10 +186,12 @@ export function mountUi(h: UiHandlers): Ui {
     renderPeers(s.peers)
     net.hidden = blocking
     copy.hidden = blocking // no room to invite anyone to
-    set(net, s.peers.length > 1 ? S.netPeers(s.peers.length) : s.net.signaling ? S.NET_ALONE : S.NET_CONNECTING)
+    const relayed = s.net.stuck > 0 && s.peers.length > 1
+    set(net, s.peers.length > 1 ? S.netPeers(s.peers.length, relayed) : s.net.signaling ? S.NET_ALONE : S.NET_CONNECTING)
+    net.title = relayed ? S.NET_RELAYED : ''
 
     const shown = blocking ? s.notice : flashed ?? s.notice
-    noticeWanted = S.noticeText(shown, s.net.stuck)
+    noticeWanted = S.noticeText(shown)
     notice.setAttribute('role', blocking ? 'alert' : 'status')
     notice.dataset.kind = shown ?? ''
     notice.hidden = shown === null

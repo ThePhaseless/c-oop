@@ -85,7 +85,7 @@ async function boot() {
       clearTimeout(offlineTimer)
       if (downSince !== null && downFor < OFFLINE_MS) offlineTimer = setTimeout(render, OFFLINE_MS - downFor)
       const run = session?.view() ?? IDLE
-      const notice: Notice = !canRun() ? 'no-isolation' : downFor >= OFFLINE_MS ? 'offline' : net.stuck > 0 ? 'stuck' : null
+      const notice: Notice = !canRun() ? 'no-isolation' : downFor >= OFFLINE_MS ? 'offline' : null
       const state: UiState = { peers: c.peers(), net, run, notice, canRun: canRun() && (run.phase === 'idle' || run.phase === 'done'), compiler }
       ui.render(state)
     })
