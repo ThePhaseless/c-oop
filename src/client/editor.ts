@@ -11,6 +11,7 @@ import { yCollab, yRemoteSelections, yUndoManagerKeymap } from 'y-codemirror.nex
 import type { Awareness } from 'y-protocols/awareness'
 import type * as Y from 'yjs'
 import { EDITOR_LABEL, EDITOR_PLACEHOLDER } from './strings'
+import { cppCompletion } from './completion'
 import { codeLimit } from './text-guard'
 
 const HINT_ID = 'editor-hint' // the Esc-then-Tab hint in the pane header (index.html)
@@ -141,6 +142,7 @@ export function createEditor(host: HTMLElement, o: { text: Y.Text; awareness: Aw
         keymap.of([...yUndoManagerKeymap, indentWithTab]), // before basicSetup: shared undo wins over local history
         basicSetup,
         cpp(),
+        cppCompletion,
         yCollab(o.text, o.awareness),
         Prec.highest(codeLimit(o.text)), // the last filter to run: it has to see what the others (the re-indent on `}`) add
         caretNameFix,
