@@ -326,9 +326,36 @@ test('a fifth topic closes the connection with 1008', async () => {
   expect((await a.closed).code).toBe(1008)
 })
 
-test('a flood closes the connection with 1008', async () => {
+test('two clients exchange a relay message of a full frame; the sender does not get its own', async () => {
   const a = await client()
-  for (let i = 0; i < SIGNAL.burst + 50; i++) a.send({ type: 'subscribe', topics: [TOPIC] })
+  const b = await client()
+  a.send({ type: 'subscribe', topics: [TOPIC] })
+  b.send({ type: 'subscribe', topics: [TOPIC] })
+  await a.settle()
+  await b.settle()
+  // base64 of a sealed full relay frame: 12 (iv) + 13 (header) + 11,000 (chunk) + 16 (tag) = 11,041 bytes
+  const data = Buffer.alloc(11_041, 7).toString('base64')
+  expect(data.length).toBe(14_724)
+  a.send({ type: 'relay', topic: TOPIC, data, extra: 1 })
+  expect(await a.settle()).toEqual([])
+  expect(await b.next()).toBe(`{"type":"relay","topic":"${TOPIC}","data":"${data}"}`)
+  b.send({ type: 'relay', topic: TOPIC, data })
+  expect(await b.settle()).toEqual([])
+  expect(await a.next()).toBe(`{"type":"relay","topic":"${TOPIC}","data":"${data}"}`)
+
+  // not subscribed: nothing is forwarded
+  const c = await client()
+  c.send({ type: 'relay', topic: TOPIC, data })
+  await c.settle()
+  expect(await a.settle()).toEqual([])
+  for (const x of [a, b, c]) x.ws.close()
+  await Promise.all([a.closed, b.closed, c.closed])
+})
+
+test('a flood of large messages closes the connection with 1008', async () => {
+  const a = await client()
+  const big = 'x'.repeat(16_000)
+  for (let i = 0; i < 200; i++) a.ws.send(big) // 3.2 MB against burstBytes
   expect((await a.closed).code).toBe(1008)
 })
 

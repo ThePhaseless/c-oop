@@ -1,7 +1,7 @@
 import type * as Y from 'yjs'
 import type { Awareness } from 'y-protocols/awareness'
 
-export type RoomKeys = { secret: string; topic: string; password: string }
+export type RoomKeys = { secret: string; topic: string; password: string; relayKey: CryptoKey }
 
 export type User = { name: string; color: string }
 export type Peer = { clientId: number; user: User; self: boolean }
@@ -57,7 +57,7 @@ export type Session = { start(): void; stop(): void; view(): RunView; onChange(c
 
 // 'failed': boot threw (for example a browser with WebRTC switched off); blocking, like 'insecure'.
 // 'code-limit' and 'copy-failed' report something that just happened and go away by themselves (Ui.flash).
-export type Notice = 'insecure' | 'bad-link' | 'failed' | 'no-isolation' | 'offline' | 'stuck' | 'code-limit' | 'copy-failed' | null
+export type Notice = 'insecure' | 'bad-link' | 'failed' | 'no-isolation' | 'offline' | 'code-limit' | 'copy-failed' | null
 // Where this browser's copy of the compiler files stands before its first Run. 'on-run': the first Run downloads them.
 export type CompilerFiles = 'on-run' | 'fetching' | 'ready'
 export type UiState = { peers: Peer[]; net: NetStatus; run: RunView; notice: Notice; canRun: boolean; compiler: CompilerFiles; ai: AiView }

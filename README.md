@@ -2,7 +2,7 @@
 
 A shared C++ editor for a classroom. Everyone who opens the same link edits one `main.cpp` together and sees each other's cursors. Anyone can press Run: the program is compiled and run in that person's browser, and its terminal is shared, so the whole room sees the output and can type the input.
 
-The editor syncs peer to peer over WebRTC (Yjs, y-webrtc). The compiler is clang built for WebAssembly, with C++20 and working exceptions. The server only hands out static files and relays the encrypted handshake between browsers. It stores no code and never runs a program. It sees no code either, unless [AI snippets](#ai-snippets) are switched on: then each prompt and part of the file pass through it on the way to Anthropic. The interface is in English.
+The editor syncs with Yjs. Browsers connect to each other directly over WebRTC (y-webrtc) where the network allows it, and every change also goes through the server's WebSocket, encrypted with a key from the room link, so a room works wherever the page loads. The compiler is clang built for WebAssembly, with C++20 and working exceptions. The server hands out static files and forwards ciphertext between browsers. It never runs a program and stores no code. It sees no code either, unless [AI snippets](#ai-snippets) are switched on: then each prompt and part of the file pass through it on the way to Anthropic. The interface is in English.
 
 ## Quick start
 
@@ -79,7 +79,7 @@ c-oop.example.org {
 
 This works with the default port binding when Caddy runs on the same machine as the container. With `docker run`, `-p 8080:8080` instead of `-p 127.0.0.1:8080:8080` publishes the port on every interface.
 
-Caddy passes WebSocket connections through, which the `/signal` endpoint needs. Whatever proxy you use, it must leave the response headers alone: the app depends on `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` to run programs.
+Caddy passes WebSocket connections through, which the `/signal` endpoint needs. That endpoint carries the WebRTC handshake and the encrypted changes. Whatever proxy you use, it must leave the response headers alone: the app depends on `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` to run programs.
 
 With [AI snippets](#ai-snippets) on, the proxy must also pass the request's own `Host` header through to the server and put the visitor's address into `X-Forwarded-For`. Caddy does both by default. nginx does neither: its `proxy_pass` sends the upstream's name as `Host`, and then the server answers 403 to every snippet request and the page says "Generation failed". Without `X-Forwarded-For`, every visitor counts as the proxy's address and they share one limit. For nginx, add:
 
@@ -88,13 +88,15 @@ proxy_set_header Host $http_host;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 ```
 
-The server has no per-address rate limit, because behind a proxy every client arrives from the same address. Limit requests and WebSocket connections per client at the proxy. The one exception is `/ai`, the endpoint behind [AI snippets](#ai-snippets). It counts requests per address and takes the address from the last entry of `X-Forwarded-For`, which is the entry the proxy next to the server writes (Caddy and Traefik both do). With no proxy in front, that header comes from the visitor, who can change it on every request and so get around the per-address limit. Behind two proxies in a row, every visitor counts as one address and they share one limit. In both cases the daily limit still bounds the cost. The server itself caps each signaling connection at 30 messages per second, 16 kB per message and 4 rooms, and accepts 2000 connections in total.
+The server has no per-address rate limit, because behind a proxy every client arrives from the same address. Limit requests and WebSocket connections per client at the proxy. The one exception is `/ai`, the endpoint behind [AI snippets](#ai-snippets). It counts requests per address and takes the address from the last entry of `X-Forwarded-For`, which is the entry the proxy next to the server writes (Caddy and Traefik both do). With no proxy in front, that header comes from the visitor, who can change it on every request and so get around the per-address limit. Behind two proxies in a row, every visitor counts as one address and they share one limit. In both cases the daily limit still bounds the cost. The server itself accepts 2000 connections in total and caps each one at 4 rooms, 16 kB per message, and 2 MB at once and 64 kB per second after that. It counts 256 bytes on top of every message, which allows about 250 small messages per second. A connection that goes over is disconnected, and the page reconnects by itself.
+
+Per room the server sends out at most 8 MB per second of handshake messages and 8 MB per second of relayed changes, each after a burst of 512 MB, and drops what is beyond. This protects a room from overload. It does not stop a client that opens many connections or rooms; the proxy's limit on connections per client remains the defence against that.
 
 Run exactly one instance behind each address. The server keeps rooms in memory and replicas do not share them, so two people in the same room who reach different replicas never find each other, and each sees an empty room with no error.
 
 ## TURN
 
-Browsers connect to each other directly. The default STUN servers are enough on home networks. School and company networks often block direct connections, and then the page reports that it could not connect to someone in the room. Those networks need a TURN server (coturn, for example), added through `ICE_SERVERS`:
+A room works without a TURN server. Browsers connect to each other directly where they can, and the default STUN servers are enough for that on home networks. School and company networks often block direct connections. Changes between such browsers then travel through the server only. The people count then reads "(via the server)", and its tooltip explains it. A TURN server (coturn, for example) is worth adding only to give those browsers a direct path as well. It goes into `ICE_SERVERS`:
 
 ```yaml
 environment:
@@ -105,9 +107,9 @@ Every visitor receives these values, the TURN username and credential included. 
 
 ## Privacy
 
-The room secret is the part of the link after `#`. Browsers never send that part to a server. From it the page derives a room id and an encryption key.
+The room secret is the part of the link after `#`. Browsers never send that part to a server. From it the page derives a room id and the encryption keys.
 
-The server sees client IP addresses, the room id (a hash that reveals neither the secret nor the key), and the WebRTC handshake messages, which are encrypted with the room key. It logs one line at startup, which also says when AI snippets are on, with the model and the daily limit, and one line for each internal error, with the error's name and message; for a file it could not read, that names the file. With AI snippets off it logs nothing else about requests. It logs nothing about rooms and stores nothing.
+The server sees client IP addresses, the room id (a hash that reveals neither the secret nor the key), and the WebRTC handshake messages, which are encrypted with the room key. Every change to the code, the terminal and the cursors also passes through it, encrypted with a key derived from the part after `#`. Of those the server sees who is in which room id and the time and size of every change, never the content. It logs one line at startup, which also says when AI snippets are on, with the model and the daily limit, and one line for each internal error, with the error's name and message; for a file it could not read, that names the file. With AI snippets off it logs nothing else about requests. It logs nothing about rooms. It writes nothing to disk and keeps nothing of a message after forwarding it. In memory it holds, while a room has connections, the room id with its connections and two byte counters for the limits above.
 
 With [AI snippets](#ai-snippets) on, the server receives each prompt together with up to 16,000 characters of `main.cpp` around the prompt line. It holds them in memory for as long as the request takes and sends them to Anthropic, where Anthropic's API terms apply to them. It stores and logs neither. It logs one line for each call to Anthropic that failed or ran into the server's time limit, with the error class, the HTTP status, Anthropic's error type and its request id. A request the visitor abandoned is not logged. The people in the room see the prompt line disappear and later the code appear as that person's edit. They do not see the request or the code while it waits to be inserted. If you run an instance for a class, tell the class that prompts and code go to Anthropic.
 
@@ -154,8 +156,12 @@ The browser:
 
 The room:
 
-- Every browser connects to every other one, so a room works for about 20 people. The server refuses the 65th connection to a room without an error; that person sees an empty room.
-- When the person who started a program closes the tab, the run ends for everyone. If their browser crashes instead, the others notice after up to 30 seconds, and a closed browser also stays in the list of people for that long.
+- A room works for about 30 people. The server refuses the 65th connection to a room without an error; that person sees an empty room.
+- When the person who started a program closes the tab, the run ends for everyone. If their browser crashes instead, the others notice after up to 30 seconds, and a closed browser also stays in the list of people for that long. Someone connected only through the server who closes the tab stays in the list for up to 30 seconds too.
+- Where the network blocks direct connections, a change can take a few seconds longer when many people join at once, and many people opening a room with a very large document at the same moment get the document one after another.
+- A full room whose document has a very long editing history uses more of the server's limit on relayed changes while people backspace.
+- After someone who had no direct connection leaves, the people count can keep saying "(via the server)" for a few minutes while others are still in the room.
+- A browser with WebRTC switched off cannot open a room: the page shows a notice and does nothing else.
 - A hidden tab runs its timers slowly, so a program started from a tab that is now in the background shares its output about once per second.
 - The name on a caret shows for about two seconds after its owner types or moves it. It can also show when someone else types or deletes exactly where that caret stands: a deletion does not say who made it, and after an insertion there the browser of the caret's owner reports the caret again when its editor has the focus.
 - After the server is updated, tabs that were already open keep the old code until they are reloaded.
