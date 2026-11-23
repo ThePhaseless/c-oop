@@ -7,7 +7,7 @@ import * as Y from 'yjs'
 import { sanitizeName } from '../src/client/presence.ts'
 import { compilerNote, exitLine, noticeText, TEMPLATE } from '../src/client/strings.ts'
 import { CODE_MAX, STUCK_MS } from '../src/shared/limits.ts'
-import { booted, count, done, exit, Fatal, focusTerminal, net, openPeer, type Peer, type PeerOpts, phase, prompted, room, screen, setCode, start, startApp, status, storedRun, text, waitFor } from './harness.ts'
+import { aiRequests, booted, count, done, exit, Fatal, focusTerminal, net, openPeer, type Peer, type PeerOpts, phase, prompted, room, screen, setCode, start, startApp, status, storedRun, text, waitFor } from './harness.ts'
 import { BUSY_LOOP, COMPILE_ERROR, ECHO, FLOOD, HELLO, OOP, STDIN, WARNING } from './programs.ts'
 
 let app: Awaited<ReturnType<typeof startApp>>
@@ -16,8 +16,8 @@ afterAll(() => app?.stop())
 
 type Open = (name: string, room?: string, opts?: PeerOpts) => Promise<Peer>
 
-function scenario(name: string, body: (open: Open) => Promise<void>) {
-  test(name, async () => {
+function scenario(name: string, body: (open: Open) => Promise<void>, skip = false) {
+  test.skipIf(skip)(name, async () => {
     const peers: Peer[] = []
     const open: Open = async (peerName, hash = '', opts = {}) => {
       const p = await openPeer(hash, { ...opts, name: peerName })
@@ -54,8 +54,10 @@ const cached = (p: Peer, files: string[]) => p.page.evaluate(async want => {
 }, files)
 const noticeShown = (p: Peer) => p.page.evaluate(() => (document.getElementById('notice')!.hidden ? '' : document.getElementById('notice-text')!.textContent ?? ''))
 
+// On the server without AI snippets (harness.ts), the page every instance without a key serves.
 scenario('01 smoke', async open => {
-  const A = await open('A')
+  let aiPosts = 0
+  const A = await open('A', '', { noAi: true, before: page => void page.on('request', r => { if (new URL(r.url()).pathname === '/ai') aiPosts++ }) })
   expect(await A.page.evaluate(() => crossOriginIsolated)).toBe(true)
   expect(room(A)).toMatch(/^#[A-Za-z0-9_-]{22}$/)
   await waitFor('A: template in the editor', async () => (await A.page.locator('.cm-content').innerText()).includes('class Shape'), 10_000)
@@ -65,6 +67,19 @@ scenario('01 smoke', async open => {
   await A.page.reload()
   expect(await A.page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark')
   await booted(A)
+  // AI snippets are off: no button, and Enter on a prompt line is a plain Enter that sends nothing.
+  const upstreamBefore = aiRequests.length
+  expect(await A.page.evaluate(async () => (await (await fetch('/config')).json()).ai)).toBe(false)
+  await A.page.locator('#editor').click()
+  await press(A, 'Control+End')
+  await type(A, '??? x')
+  await press(A, 'Enter')
+  await type(A, 'y')
+  await waitFor('A: the prompt line stayed and a new line follows it', async () => /\n\?\?\? x\n[ \t]*y$/.test(await text(A)), 10_000)
+  await Bun.sleep(500) // a request would have left by now
+  expect(await A.page.locator('#ai').isHidden()).toBe(true)
+  expect(aiPosts).toBe(0)
+  expect(aiRequests.length).toBe(upstreamBefore)
 })
 
 scenario('02 two peers', async open => {
@@ -1031,3 +1046,51 @@ scenario('27 double tap on run', async open => {
     expect(await exit(A)).toBe('killed')
   }
 })
+
+// Against a stub of the Anthropic API (harness.ts). Skipped for BASE_URL: the image under test has no key and cannot reach the stub.
+scenario('28 ai snippet', async open => {
+  const A = await open('A')
+  const B = await open('B', room(A))
+  await connected(A, B)
+  const both = async (what: string, code: string) => {
+    await waitFor(`A and B: ${what}`, async () => (await text(A)) === code && (await text(B)) === code, 30_000)
+  }
+  const aiState = (p: Peer) => p.page.evaluate(() => { const b = document.getElementById('ai')!; return b.hidden ? 'hidden' : b.dataset.state })
+  await setCode(A, 'int main() {\n    ??? declare answer\n    return 0;\n}\n')
+  await sameText(B, 'int main() {\n    ??? declare answer\n    return 0;\n}\n')
+  await A.page.locator('#editor').click()
+  await press(A, 'Control+Home')
+  await press(A, 'ArrowDown')
+  await press(A, 'End')
+  await type(A, ' please')
+  await press(A, 'Enter') // straight away: the typing and the removal of the line must still be two undo steps
+
+  const gone = 'int main() {\n    return 0;\n}\n'
+  await sameText(B, gone) // the prompt line went for everyone
+  await waitFor('A: generated code is ready', async () => (await aiState(A)) === 'ready', 30_000)
+  expect(await text(A)).toBe(gone)
+  expect(await aiState(B)).toBe('hidden')
+  const sent = aiRequests.at(-1)!
+  expect(sent.model).toBe('claude-sonnet-5-5')
+  expect(sent.output_config.effort).toBe('low')
+  const asked = JSON.stringify(sent.messages)
+  for (const part of ['declare answer please', '<insert_here/>', 'int main() {']) expect(asked).toContain(part)
+
+  // A peer's edit above the place moves it; the code still lands where the line was.
+  await B.page.evaluate(() => window.__coop!.collab.text.insert(0, '#include <vector>\n'))
+  await sameText(A, '#include <vector>\n' + gone)
+  await press(A, 'Control')
+  await Bun.sleep(700) // one tap of Control inserts nothing, however long one waits
+  expect(await aiState(A)).toBe('ready')
+  expect(await text(A)).toBe('#include <vector>\n' + gone)
+  await press(A, 'Control')
+  await press(A, 'Control')
+  await both('the code is inserted', '#include <vector>\nint main() {\n    int answer = 42;\n    int twice = answer * 2;\n    return 0;\n}\n')
+  await waitFor('A: the button is gone', async () => (await aiState(A)) === 'hidden', 10_000)
+
+  await A.page.locator('#editor').click()
+  await press(A, 'Control+z')
+  await both('the first undo removed the code', '#include <vector>\n' + gone)
+  await press(A, 'Control+z')
+  await both('the second undo brought the prompt line back whole', '#include <vector>\nint main() {\n    ??? declare answer please\n    return 0;\n}\n')
+}, !!process.env.BASE_URL)

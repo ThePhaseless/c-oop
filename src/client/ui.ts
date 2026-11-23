@@ -30,6 +30,7 @@ export function mountUi(h: UiHandlers): Ui {
   const run = $<HTMLButtonElement>('run'), stop = $<HTMLButtonElement>('stop')
   const status = $('status'), percent = $('percent'), progress = $<HTMLProgressElement>('progress')
   const terminal = $('terminal'), terminalEmpty = $('terminal-empty')
+  const ai = $<HTMLButtonElement>('ai'), aiLabel = $('ai-label'), aiLive = $('ai-live')
 
   // Static copy: strings.ts is the source, index.html only shows it before this runs.
   set(document.querySelector('.wordmark')!, S.APP_NAME)
@@ -126,6 +127,8 @@ export function mountUi(h: UiHandlers): Ui {
   stop.onclick = e => { if (meant(e)) h.stop() }
   stop.onpointerleave = () => stop.classList.remove('fresh')
   newRoom.onclick = () => h.newRoom()
+  ai.onclick = () => h.ai()
+  ai.onkeydown = e => { if (e.key === 'Escape') h.aiEscape() }
 
   // The "+N" button stays in the list as its last item, so it keeps keyboard focus when it opens the rest.
   const moreItem = el('li', 'more'), more = el('button', '') as HTMLButtonElement
@@ -173,6 +176,7 @@ export function mountUi(h: UiHandlers): Ui {
   }
 
   let noticeWanted = ''
+  let aiSaid = '', aiWanted = ''
   function render(s: UiState) {
     last = s
     const { phase } = s.run
@@ -221,6 +225,28 @@ export function mountUi(h: UiHandlers): Ui {
     terminalEmpty.hidden = !idle || blocking
     terminal.inert = idle // under the empty state: no tab stop, no rows of nothing for a screen reader
     set(emptyNote!, S.compilerNote(s.compiler))
+
+    // The snippet button shows a request that is working, ready or failed. While working it is aria-disabled and
+    // not disabled, so it keeps the focus it has.
+    const aiShown = s.ai.state !== 'off' && s.ai.state !== 'idle'
+    const aiFocused = document.activeElement === ai
+    ai.hidden = !aiShown
+    if (aiShown) {
+      ai.dataset.state = s.ai.state
+      set(aiLabel, S.aiLabel(s.ai))
+      ai.title = S.aiStatus(s.ai)
+      if (s.ai.state === 'working') ai.setAttribute('aria-disabled', 'true')
+      else ai.removeAttribute('aria-disabled')
+    } else if (aiFocused) $('editor').querySelector<HTMLElement>('.cm-content')?.focus()
+    // Spoken when the state changes, and again when another prompt was turned away (nudge): emptied first, so the
+    // same sentence counts as a change, and set one frame later, like the notice above.
+    const aiKey = JSON.stringify(s.ai)
+    if (aiKey !== aiSaid) {
+      aiSaid = aiKey
+      aiWanted = S.aiStatus(s.ai)
+      set(aiLive, '')
+      requestAnimationFrame(() => set(aiLive, aiWanted))
+    }
   }
 
   return { editorHost: $('editor'), terminalHost: terminal, render, flash }

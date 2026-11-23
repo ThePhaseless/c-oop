@@ -25,3 +25,9 @@ test('nothing completes inside a comment or a string', async () => {
   expect(await labels('// vir')).toEqual([])
   expect(await labels('auto s = "vec')).toEqual([])
 })
+
+test('nothing completes on a `???` prompt line', async () => {
+  expect(await labels('int main() {\n    ??? declare a vec')).toEqual([])
+  expect(await labels('??? vir')).toEqual([])
+  expect(await labels('??? x\nvir')).toContain('virtual')
+})

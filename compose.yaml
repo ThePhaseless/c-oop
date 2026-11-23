@@ -6,10 +6,14 @@ services:
     # COOP_BIND=0.0.0.0 publishes the port on every interface, for a proxy on another machine.
     ports:
       - "${COOP_BIND:-127.0.0.1}:${COOP_PORT:-8080}:8080"
-    # Peers behind strict NATs or firewalls (school, company networks) need a TURN server.
-    # These values are sent to every browser through /config.
     # environment:
+    #   # Peers behind strict NATs or firewalls (school, company networks) need a TURN server.
+    #   # ICE_SERVERS is sent to every browser through /config.
     #   ICE_SERVERS: '[{"urls":["stun:stun.l.google.com:19302"]},{"urls":["turn:turn.example.org:3478"],"username":"c-oop","credential":"change-me"}]'
+    #   # AI snippets (README, AI snippets): off without the key, and off with COOP_AI_DAILY_LIMIT set to 0.
+    #   # The key stays on the server.
+    #   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    #   COOP_AI_DAILY_LIMIT: 200
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

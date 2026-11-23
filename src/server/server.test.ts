@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync } from 'node:zlib'
-import { DEFAULT_ICE, SIGNAL } from '../shared/limits.ts'
+import { AI, DEFAULT_ICE, SIGNAL } from '../shared/limits.ts'
 import { createServer, optionsFromEnv } from './server.ts'
 import { SECURITY_HEADERS } from './static.ts'
 
@@ -57,7 +57,7 @@ test('/config returns the default ICE servers, uncached', async () => {
   const r = await raw('/config')
   expect(r.headers.get('cache-control')).toBe('no-store')
   expect(r.headers.get('content-type')).toBe('application/json')
-  expect(await r.json()).toEqual({ iceServers: DEFAULT_ICE })
+  expect(await r.json()).toEqual({ iceServers: DEFAULT_ICE, ai: false })
   await sameAsGet('/config')
 })
 
@@ -67,7 +67,7 @@ test('/config returns custom ICE_SERVERS from the environment', async () => {
   expect(o).toEqual({ port: 0, distDir: join(root, 'dist'), iceServers: ice })
   const s = await createServer(o)
   try {
-    expect(await (await fetch(`http://localhost:${s.port}/config`)).json()).toEqual({ iceServers: ice })
+    expect(await (await fetch(`http://localhost:${s.port}/config`)).json()).toEqual({ iceServers: ice, ai: false })
   } finally {
     await s.stop(true)
   }
@@ -93,6 +93,67 @@ test('invalid ICE_SERVERS or PORT rejects with a clear message', () => {
   expect(() => optionsFromEnv({ ICE_SERVERS: '[{"urls":"turn:x?transport=tcp","username":"u","credential":"p"}]' })).not.toThrow()
   for (const v of ['{', 'stun:x', '{"urls":"stun:x"}', '"stun:x"', 'null', '5']) expect(() => optionsFromEnv({ ICE_SERVERS: v })).toThrow(/ICE_SERVERS/)
   for (const v of ['x', '-1', '70000', '80.5']) expect(() => optionsFromEnv({ PORT: v })).toThrow(/PORT/)
+})
+
+test('AI options from the environment', async () => {
+  const ai = (env: Record<string, string>) => optionsFromEnv(env).ai
+  expect(ai({ ANTHROPIC_API_KEY: 'k' })).toEqual({ apiKey: 'k', model: 'claude-sonnet-5-5', dailyLimit: AI.dailyLimit })
+  expect(ai({ ANTHROPIC_API_KEY: 'k', COOP_AI_DAILY_LIMIT: '' })?.dailyLimit).toBe(AI.dailyLimit)
+  expect(ai({ ANTHROPIC_API_KEY: 'k', COOP_AI_MODEL: 'claude-opus-5-5', COOP_AI_DAILY_LIMIT: '7' })).toEqual({ apiKey: 'k', model: 'claude-sonnet-5-5', dailyLimit: 7 })
+  // off: no `ai` key at all
+  expect('ai' in optionsFromEnv({ ANTHROPIC_API_KEY: 'k', COOP_AI_DAILY_LIMIT: '0' })).toBe(false)
+  expect('ai' in optionsFromEnv({ COOP_AI_DAILY_LIMIT: '7' })).toBe(false)
+  expect('ai' in optionsFromEnv({ ANTHROPIC_API_KEY: '' })).toBe(false)
+  for (const v of ['x', '-1', '1.5']) {
+    expect(() => optionsFromEnv({ ANTHROPIC_API_KEY: 'k', COOP_AI_DAILY_LIMIT: v })).toThrow(/COOP_AI_DAILY_LIMIT/)
+    expect(() => optionsFromEnv({ COOP_AI_DAILY_LIMIT: v })).toThrow(/COOP_AI_DAILY_LIMIT/)
+  }
+
+  const s = await createServer(optionsFromEnv({ ANTHROPIC_API_KEY: 'k', COOP_AI_DAILY_LIMIT: '0', PORT: '0', DIST_DIR: join(root, 'dist') }))
+  try {
+    const at = `http://localhost:${s.port}`
+    expect((await (await fetch(at + '/config')).json()).ai).toBe(false)
+    const r = await fetch(at + '/ai', { method: 'POST', body: '{}', headers: { Origin: at, 'Content-Type': 'application/json' } })
+    expect(r.status).toBe(405)
+    expect(r.headers.get('allow')).toBe('GET, HEAD')
+  } finally {
+    await s.stop(true)
+  }
+})
+
+// The image runs the server as one bundled file (see the Dockerfile); this is the only test of the SDK inside it.
+test('the bundled server starts without node_modules', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'c-oop-bundle-'))
+  const built = await Bun.build({ entrypoints: [join(import.meta.dir, 'server.ts')], target: 'bun', outdir: dir })
+  expect(built.success).toBe(true)
+  const proc = Bun.spawn([process.execPath, join(dir, 'server.js')], {
+    cwd: dir,
+    env: { PORT: '0', DIST_DIR: join(root, 'dist'), ANTHROPIC_API_KEY: 'test' },
+    stdout: 'pipe',
+    stderr: 'inherit',
+  })
+  try {
+    const listening = (async () => {
+      let out = ''
+      for await (const chunk of proc.stdout.pipeThrough(new TextDecoderStream())) {
+        out += chunk
+        const port = /^c-oop listening on port (\d+), AI snippets on \(claude-sonnet-5-5, 200 requests a day\)\n/.exec(out)?.[1]
+        if (port) return port
+      }
+      return null
+    })()
+    const port = await Promise.race([
+      listening.then(p => p ?? 'stdout ended without the listening line'),
+      proc.exited.then(code => `the process exited with ${code}`),
+      Bun.sleep(10_000).then(() => 'no listening line within 10 s'),
+    ])
+    expect(port).toMatch(/^\d+$/) // anything else says which of the three ended the wait
+    expect((await (await fetch(`http://localhost:${port}/config`)).json()).ai).toBe(true)
+  } finally {
+    proc.kill()
+    await proc.exited
+    await rm(dir, { recursive: true, force: true })
+  }
 })
 
 test('a missing dist directory rejects', async () => {
@@ -142,7 +203,7 @@ test('static files: GET, HEAD, brotli and 304 over the wire', async () => {
 })
 
 test('other methods give 405 with Allow on every path', async () => {
-  for (const path of ['/', '/config', '/healthz', '/signal', '/nope']) {
+  for (const path of ['/', '/config', '/healthz', '/signal', '/ai', '/nope']) {
     const r = await raw(path, { method: 'POST', body: 'x' })
     expect(r.status).toBe(405)
     expect(r.headers.get('allow')).toBe('GET, HEAD')

@@ -4,6 +4,7 @@
 import { completeAnyWord, completeFromList, ifNotIn, snippetCompletion, type Completion } from '@codemirror/autocomplete'
 import { cppLanguage } from '@codemirror/lang-cpp'
 import type { Extension } from '@codemirror/state'
+import { TRIGGER_LINE } from './ai'
 
 const words = (type: string, list: string): Completion[] => list.split(' ').map(label => ({ label, type }))
 
@@ -23,7 +24,12 @@ export const COMPLETIONS: Completion[] = [
 ]
 
 const LISTED = new Set(COMPLETIONS.map(c => c.label))
-const outsideText = (source: Parameters<typeof ifNotIn>[1]) => ifNotIn(['LineComment', 'BlockComment', 'String', 'RawString', 'CharLiteral'], source)
+type Source = Parameters<typeof ifNotIn>[1]
+// Nor on a `??? ` prompt line (ai.ts): a popup on every English word gets in the way of typing the prompt.
+const outsideText = (source: Source): Source => {
+  const inCode = ifNotIn(['LineComment', 'BlockComment', 'String', 'RawString', 'CharLiteral'], source)
+  return ctx => (TRIGGER_LINE.test(ctx.state.doc.lineAt(ctx.pos).text) ? null : inCode(ctx))
+}
 
 export const cppCompletion: Extension = [
   cppLanguage.data.of({ autocomplete: outsideText(completeFromList(COMPLETIONS)) }),

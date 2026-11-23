@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import type { CompilerFiles, Exit, Notice, Peer, RunView, UiState } from '../../shared/contracts'
+import type { AiView, CompilerFiles, Exit, Notice, Peer, RunView, UiState } from '../../shared/contracts'
 import { PEER_COLORS } from '../../shared/limits'
 import { createEditor } from '../editor'
 import indexHtml from '../index.html' with { type: 'text' }
@@ -19,6 +19,7 @@ type State = {
   notice?: Notice
   canRun?: boolean
   compiler?: CompilerFiles
+  ai?: AiView
   run?: Partial<RunView>
   out?: string // program output shown between the header line and the exit line
   emptyDoc?: boolean
@@ -66,6 +67,9 @@ const STATES: Record<string, State> = {
   'done-no-wasm-eh': done('no-wasm-eh', ''),
   'done-runner-left': { peers: 2, run: theirs({ phase: 'done', exit: 'runner-left' }), out: PROMPT + '\r\n' },
   'done-load-error': done('load-error', ''),
+  'ai-working': { peers: 3, ai: { state: 'working', partial: true, nudge: 0 } },
+  'ai-ready': { peers: 3, ai: { state: 'ready', nudge: 0 } },
+  'ai-failed': { peers: 3, ai: { state: 'failed', why: 'day-limit' } }, // the longest label
   'copy-done': { peers: 3, act: 'copy' },
   'copy-failed': { peers: 3, act: 'copy-fail' },
   'name-edit': { peers: 3, act: 'name' },
@@ -92,6 +96,7 @@ const uiState: UiState = {
   notice: state.notice ?? null,
   canRun: state.canRun ?? true,
   compiler: state.compiler ?? 'on-run',
+  ai: state.ai ?? { state: 'idle' },
 }
 
 const ui = mountUi({
@@ -100,6 +105,8 @@ const ui = mountUi({
   rename: name => { if (peers[0]) peers[0].user.name = name; ui.render(uiState) },
   newRoom: () => console.log('newRoom'),
   themeChanged: () => { term.options.theme = termTheme() },
+  ai: () => console.log('ai'),
+  aiEscape: () => console.log('aiEscape'),
 })
 // The URL wins over the stored theme, so a screenshot does not depend on earlier visits.
 const themeParam = params.get('theme')

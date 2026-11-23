@@ -1,5 +1,6 @@
 // Every UI string. Text only: callers add colours and escape codes.
-import type { CompilerFiles, Exit, Notice, RunView } from '../shared/contracts'
+import type { AiView, CompilerFiles, Exit, Notice, RunView } from '../shared/contracts'
+import { AI } from '../shared/limits'
 
 export const APP_NAME = 'c-oop'
 export const FILE_NAME = 'main.cpp'
@@ -46,6 +47,45 @@ export const EDITOR_LABEL = 'Code editor, main.cpp'
 export const EDITOR_PLACEHOLDER = 'Empty file. If someone has this room open, the code will appear once you connect. You can also start typing.'
 /** Shown in the editor's header while focus is inside the pane, and the editor's description for assistive tech. */
 export const EDITOR_TAB_HINT = 'Esc, then Tab: leave the editor'
+
+// `??? <prompt>` snippets. The prompt line is gone by the time a request fails, hence AI_UNDO.
+const AI_UNDO = ' Undo brings the prompt line back.'
+/** Text and accessible name of the `#ai` button; '' while it is hidden. */
+export function aiLabel(v: AiView): string {
+  if (v.state === 'working') return 'Generating…'
+  if (v.state === 'ready') return 'Insert code'
+  if (v.state !== 'failed') return ''
+  switch (v.why) {
+    case 'limit': return 'Too many requests'
+    case 'day-limit': return 'Daily limit reached'
+    case 'busy': return 'Busy, try again'
+    case 'refused': return 'No code for that'
+    case 'too-long': return 'Answer too long'
+    case 'prompt': return 'Prompt too long'
+    case 'failed': return 'Generation failed'
+  }
+}
+/** The sentence for the `#ai` button's tooltip and its live region. */
+export function aiStatus(v: AiView): string {
+  switch (v.state) {
+    case 'off': return ''
+    case 'idle': return v.last === 'inserted' ? 'Generated code inserted.' : v.last === 'discarded' ? 'Generated code discarded.' : ''
+    case 'working': return 'Generating code for your prompt.' + (v.partial ? ' Only the part of main.cpp around that line was sent.' : '')
+    case 'ready':
+      if (v.noRoom) return 'The generated code does not fit: main.cpp can have at most a million characters. Delete some text and insert again.'
+      return 'Generated code is ready. Press Ctrl twice or use this button to insert it. Esc on this button discards it.'
+    case 'failed': break
+  }
+  switch (v.why) {
+    case 'limit': return 'Too many prompts came from your network in the last minutes. Wait a few minutes and try again.' + AI_UNDO
+    case 'day-limit': return 'Today\'s limit of generated snippets is used up. It starts over at midnight UTC.' + AI_UNDO
+    case 'busy': return 'The code generator is busy or took too long. Try again in a moment.' + AI_UNDO
+    case 'refused': return 'No code came back for that prompt. Ask for C++ code for this file.' + AI_UNDO
+    case 'too-long': return 'The answer was too long and was not inserted. Ask for a smaller piece of code.' + AI_UNDO
+    case 'prompt': return `The prompt is too long. Shorten it to at most ${AI.promptMax} characters and press Enter again.`
+    case 'failed': return 'The code could not be generated. Try again.' + AI_UNDO
+  }
+}
 
 export const TERMINAL_LABEL = 'Program terminal'
 export const TERMINAL_TITLE = 'Terminal'

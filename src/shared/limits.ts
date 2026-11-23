@@ -25,3 +25,19 @@ export const CONN_FORGET_MS = 12_000  // a peer id absent this long is forgotten
 export const RUNNER_GRACE_MS = 5_000  // wait this long for a never-seen runner before showing "runner left"
 export const PEER_COLORS = ['#e02636', '#c25110', '#986d08', '#498220', '#0f845d', '#0d7da2', '#376ce9', '#9451e0', '#cc2bac'] as const
 export const DEFAULT_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }]
+export const AI = {
+  promptMax: 500,          // chars of one prompt
+  beforeMax: 12_000,       // chars of main.cpp sent from before the insertion point
+  afterMax: 4_000,         // chars sent from after it
+  bodyMax: 128 * 1024,     // bytes of one POST /ai body (16,500 chars at 6 bytes each, the worst JSON escaping, still fit)
+  maxTokens: 4096,         // max_tokens; on the default model thinking counts toward it and cannot be turned off
+  perAddress: 30,          // requests per client address per window
+  windowMs: 600_000,       // that window
+  maxAddresses: 10_000,    // addresses tracked at once
+  concurrent: 4,           // upstream calls in flight
+  dailyLimit: 200,         // default of COOP_AI_DAILY_LIMIT
+  totalMs: 55_000,         // the server's deadline for the one upstream call
+  clientMs: 60_000,        // the browser gives up after this
+  doubleTapMs: 400,        // the two Control taps
+  failedMs: 8_000,         // a failed state clears itself after this
+} as const

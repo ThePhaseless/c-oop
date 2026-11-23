@@ -11,8 +11,11 @@ import { DEFAULT_ICE } from '../src/shared/limits.ts'
 export class Fatal extends Error {}
 
 export type Peer = { name: string; page: Page; errors: string[]; close(): Promise<void> }
-/** `before` gets the page before it navigates: the place for routes and for listeners that must see every request. */
-export type PeerOpts = { name?: string; persistent?: boolean; touch?: boolean; initScript?: () => void; before?: (page: Page) => void | Promise<void> }
+/**
+ * `before` gets the page before it navigates: the place for routes and for listeners that must see every request.
+ * `noAi` opens the app on the server without AI snippets, which is what an instance without a key serves.
+ */
+export type PeerOpts = { name?: string; noAi?: boolean; persistent?: boolean; touch?: boolean; initScript?: () => void; before?: (page: Page) => void | Promise<void> }
 
 const open = new Set<Peer>() // a recorded error or a closed page on any of these fails the running wait
 
@@ -51,17 +54,34 @@ export async function waitFor<T>(label: string, check: () => T | Promise<T>, dea
   }
 }
 
-let base = ''
+let base = '', plainBase = '' // plainBase: the same app from a server without AI snippets
+
+/** What the stub of the Anthropic API answers, and the JSON body of every request it got. */
+export const AI_ANSWER = '```cpp\nint answer = 42;\nint twice = answer * 2;\n```'
+export const aiRequests: { model: string; output_config: { effort: string }; messages: unknown[] }[] = []
 
 /** The app under test: `BASE_URL` when set (the container), otherwise an in-process server over `dist`. */
 export async function startApp(): Promise<{ base: string; stop(): Promise<void> }> {
   if (process.env.BASE_URL) {
-    base = process.env.BASE_URL.replace(/\/+$/, '')
+    base = plainBase = process.env.BASE_URL.replace(/\/+$/, '') // the instance under test has no key
     return { base, stop: async () => {} }
   }
-  const server = await createServer({ port: 0, distDir: 'dist', iceServers: DEFAULT_ICE })
+  // The fake Anthropic API: the server's real SDK code talks to it, and no test calls the real one.
+  const upstream = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      aiRequests.push(await req.json() as (typeof aiRequests)[number])
+      return Response.json({ id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', stop_reason: 'end_turn', stop_sequence: null,
+        content: [{ type: 'thinking', thinking: '', signature: 's' }, { type: 'text', text: AI_ANSWER }], usage: { input_tokens: 1, output_tokens: 1 } })
+    },
+  })
+  const ai = { apiKey: 'e2e', model: 'claude-sonnet-5-5', dailyLimit: 1000, baseURL: `http://localhost:${upstream.port}` }
+  const server = await createServer({ port: 0, distDir: 'dist', iceServers: DEFAULT_ICE, ai })
+  // CI runs only this in-process suite, so one server stays as every deployment without a key is: no `ai`.
+  const plain = await createServer({ port: 0, distDir: 'dist', iceServers: DEFAULT_ICE })
   base = `http://localhost:${server.port}`
-  return { base, stop: () => server.stop(true) }
+  plainBase = `http://localhost:${plain.port}`
+  return { base, stop: async () => { await Promise.all([server, plain, upstream].map(s => s.stop(true))) } }
 }
 
 // playwright-core looks for one exact browser revision; use whatever this machine has (newest first).
@@ -115,7 +135,7 @@ export async function openPeer(room: string, opts: PeerOpts = {}): Promise<Peer>
   }
   open.add(peer)
   try {
-    await page.goto(`${base}/${room}`)
+    await page.goto(`${opts.noAi ? plainBase : base}/${room}`)
     await booted(peer)
   } catch (e) {
     await peer.close()

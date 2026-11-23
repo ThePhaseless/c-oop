@@ -140,6 +140,32 @@ button, input { font: inherit; font-variation-settings: inherit; color: inherit;
 /* Stop has just taken Run's place under a resting pointer: outlined until the pointer has left once (ui.ts). */
 .btn-stop.fresh:hover { background: transparent; color: var(--margin); }
 
+/* The state of this browser's `??? ` snippet request, beside the file name (ui.ts sets data-state). */
+.btn-ai {
+  gap: 0.375rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  /* What the file name and the gap leave of the row: a button wider than that would take a row of its own and make
+     the header higher. A label that does not fit wraps inside the button instead; two lines are as high as it is. */
+  max-width: calc(100% - 5.75rem);
+  padding-block: 0;
+  line-height: 1;
+  text-align: left;
+}
+.btn-ai svg { flex: none; }
+.btn-ai g { display: none; }
+.btn-ai[data-state="working"] .i-working, .btn-ai[data-state="ready"] .i-ready, .btn-ai[data-state="failed"] .i-failed { display: inline; }
+.btn-ai[data-state="working"] { color: var(--ink-2); cursor: default; }
+.btn-ai[data-state="working"]:hover:not(:disabled) { background: transparent; }
+.btn-ai[data-state="working"] svg { animation: ai-spin 0.9s linear infinite; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+.btn-ai[data-state="ready"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn-ai[data-state="ready"]:hover:not(:disabled) { background: var(--accent); filter: brightness(1.12); }
+.btn-ai[data-state="failed"] { border-color: var(--margin); color: var(--margin); font-weight: 600; }
+.btn-ai[data-state="failed"]:hover:not(:disabled) { background: var(--margin); color: var(--paper); }
+/* For screen readers only. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 /* Header */
 .top {
   display: flex;
@@ -303,6 +329,10 @@ body[data-exit="code:0"] #status { color: var(--ok); }
   .pane { min-height: 0; }
   .pane-terminal { border-top: 0; border-left: 1px solid var(--line); }
 }
+@media (max-width: 519.98px) {
+  /* Beside the snippet button the hint would have a few characters a line, and the header would grow with it. */
+  #ai:not([hidden]) ~ #editor-hint { display: none; }
+}
 @media (max-width: 899.98px) {
   .room { order: 1; flex: 1 1 100%; flex-wrap: wrap; }
   #net { flex: 1 1 12rem; white-space: normal; }
@@ -310,6 +340,8 @@ body[data-exit="code:0"] #status { color: var(--ok); }
 /* Wide enough but short (a laptop at 200% zoom): stacked, the terminal and its prompt would be off screen. */
 @media (min-width: 37.5rem) and (max-width: 899.98px) and (max-height: 30rem) {
   main { display: grid; grid-template: auto minmax(0, 1fr) / minmax(0, 3fr) minmax(0, 2fr); overflow: hidden; }
+  /* The editor has three fifths of the width here, so the hint beside the snippet button would again make the header grow. */
+  #ai:not([hidden]) ~ #editor-hint { display: none; }
   /* Both pane headers stand in the first row, so the editor's is as high as the terminal's whatever that one
      holds, and the code starts level with the terminal's first row. */
   .pane { display: grid; grid-row: 1 / -1; grid-template-rows: auto minmax(0, 1fr); grid-template-rows: subgrid; min-height: 0; } /* a browser without subgrid keeps the first: two rows of its own in each pane */
@@ -343,6 +375,8 @@ body[data-exit="code:0"] #status { color: var(--ok); }
 @media (pointer: coarse) {
   .btn, #name, #more, #name-input, .pane-editor .pane-head::before { min-height: 2.75rem; }
   .btn-icon, #more { min-width: 2.75rem; }
+  /* The editor's header has no button of its own to be as high as: this one reaches over the header's padding. */
+  .btn-ai { margin-block: -0.375rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
