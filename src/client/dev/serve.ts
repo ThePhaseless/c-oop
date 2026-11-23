@@ -25,7 +25,7 @@ const files: Record<string, string> = {
   '/style.css': join(out, 'style.css'),
   '/theme.js': join(here, '../theme.js'),
 }
-for (const subset of ['latin', 'latin-ext']) for (const axis of ['mono', 'casl']) {
+for (const subset of ['latin', 'latin-ext']) for (const axis of ['mono']) {
   const name = `recursive-${subset}-${axis}-normal.woff2`
   files[`/fonts/${name}`] = join(fonts, name)
 }

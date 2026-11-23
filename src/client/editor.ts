@@ -10,7 +10,7 @@ import { basicSetup } from 'codemirror'
 import { yCollab, yRemoteSelections, yUndoManagerKeymap } from 'y-codemirror.next'
 import type { Awareness } from 'y-protocols/awareness'
 import type * as Y from 'yjs'
-import { EDITOR_LABEL, EDITOR_PHRASES, EDITOR_PLACEHOLDER } from './strings'
+import { EDITOR_LABEL, EDITOR_PLACEHOLDER } from './strings'
 import { codeLimit } from './text-guard'
 
 const HINT_ID = 'editor-hint' // the Esc-then-Tab hint in the pane header (index.html)
@@ -54,7 +54,7 @@ const theme = EditorView.theme({
     whiteSpace: 'normal',
     verticalAlign: 'top',
   },
-  '.cm-panels': { color: 'var(--ink)', backgroundColor: 'var(--paper-2)', fontFamily: 'var(--font-ui)', fontVariationSettings: '"CASL" 0' },
+  '.cm-panels': { color: 'var(--ink)', backgroundColor: 'var(--paper-2)', fontFamily: 'var(--font-ui)' },
   '.cm-panels.cm-panels-top': { borderBottom: '1px solid var(--line)' },
   // At most half of the editor: on a phone the search panel is higher than the editor is, and would cover all of the code.
   // No shrinking: a box that scrolls may shrink below its content, and would then give up height to the code at any size.
@@ -148,7 +148,6 @@ export function createEditor(host: HTMLElement, o: { text: Y.Text; awareness: Aw
         indentUnit.of('    '),
         EditorState.tabSize.of(4),
         placeholder(EDITOR_PLACEHOLDER),
-        EditorState.phrases.of(EDITOR_PHRASES),
         EditorView.contentAttributes.of({ 'aria-label': EDITOR_LABEL, 'aria-describedby': HINT_ID }),
         theme,
         syntaxHighlighting(highlight),

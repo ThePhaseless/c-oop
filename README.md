@@ -2,7 +2,7 @@
 
 A shared C++ editor for a classroom. Everyone who opens the same link edits one `main.cpp` together and sees each other's cursors. Anyone can press Run: the program is compiled and run in that person's browser, and its terminal is shared, so the whole room sees the output and can type the input.
 
-The editor syncs peer to peer over WebRTC (Yjs, y-webrtc). The compiler is clang built for WebAssembly, with C++20 and working exceptions. The server only hands out static files and relays the encrypted handshake between browsers. It never sees the code and never runs a program. The interface is in Polish.
+The editor syncs peer to peer over WebRTC (Yjs, y-webrtc). The compiler is clang built for WebAssembly, with C++20 and working exceptions. The server only hands out static files and relays the encrypted handshake between browsers. It never sees the code and never runs a program. The interface is in English.
 
 ## Quick start
 
@@ -103,7 +103,7 @@ The program:
 - Fifteen standard headers are precompiled and always included: `iostream`, `string`, `vector`, `memory`, `stdexcept`, `map`, `algorithm`, `sstream`, `iomanip`, `cmath`, `functional`, `utility`, `array`, `set`, `unordered_map`. A program that forgets one of these `#include` lines still compiles here and may fail with another compiler.
 - stdout and stderr share one stream.
 - The terminal shows text and colours. Other terminal control sequences in the program's output (cursor movement, clearing the screen, window titles) are removed before the output is shared.
-- A program can print a line that looks like the page's own grey status lines, for example `[program zakończył się kodem 0]`. It cannot change the status next to the Run button.
+- A program can print a line that looks like the page's own grey status lines, for example `[program exited with code 0]`. It cannot change the status next to the Run button.
 
 The browser:
 

@@ -36,7 +36,7 @@ function scenario(name: string, body: (open: Open) => Promise<void>) {
   })
 }
 
-const HEADER = 'uruchamia main.cpp]'
+const HEADER = 'is running main.cpp]'
 const peerCount = (p: Peer) => p.page.locator('#peers [data-client-id]').count()
 const connected = (...peers: Peer[]) =>
   waitFor(`${peers.map(p => p.name).join(', ')}: one WebRTC connection each`, async () => (await Promise.all(peers.map(net))).every(n => n.connected === peers.length - 1), 30_000)
@@ -58,7 +58,7 @@ scenario('01 smoke', async open => {
   const A = await open('A')
   expect(await A.page.evaluate(() => crossOriginIsolated)).toBe(true)
   expect(room(A)).toMatch(/^#[A-Za-z0-9_-]{22}$/)
-  await waitFor('A: template in the editor', async () => (await A.page.locator('.cm-content').innerText()).includes('class Figura'), 10_000)
+  await waitFor('A: template in the editor', async () => (await A.page.locator('.cm-content').innerText()).includes('class Shape'), 10_000)
   expect(await text(A)).toBe(TEMPLATE)
   // A stored theme is applied by theme.js, a script of its own that the CSP has to let through.
   await A.page.evaluate(() => localStorage.setItem('c-oop.theme', 'dark'))
@@ -137,7 +137,7 @@ scenario('04 class program', async open => {
   for (const line of ['jestem A', 'jestem B', '42 abab', 'zlapano: bum', exitLine('code:0')]) expect(s).toContain(line)
   expect(count(s, HEADER)).toBe(1)
   expect(await exit(A)).toBe('code:0')
-  expect(await status(A)).toBe('Zakończono, kod 0')
+  expect(await status(A)).toBe('Finished, exit code 0')
 })
 
 scenario('05 interactive stdin', async open => {
@@ -145,7 +145,7 @@ scenario('05 interactive stdin', async open => {
   await setCode(A, STDIN)
   let id = await start(A)
   await prompted(A, 'Imie? ') // on screen before any key is sent
-  expect(await status(A)).toBe('Program czeka na dane')
+  expect(await status(A)).toBe('Program is waiting for input')
   await focusTerminal(A)
   await type(A, 'Alx')
   await press(A, 'Backspace')
@@ -199,7 +199,7 @@ scenario('06 diagnostics', async open => {
     expect(s).toContain('std::cout << "x" << std::endl') // the source line
     expect(s).toMatch(/^\s*\|\s*\^/m) // the caret line
     expect(s).toContain(exitLine('compile-error'))
-    expect(await status(p)).toBe('Błąd kompilacji')
+    expect(await status(p)).toBe('Compile error')
   }
   await setCode(A, WARNING)
   id = await start(A)
@@ -258,7 +258,7 @@ scenario('08 output limit', async open => {
   for (const p of [A, B]) {
     expect(await exit(p)).toBe('output-limit')
     expect(await screen(p)).toContain(exitLine('output-limit'))
-    expect(await status(p)).toBe('Zatrzymano: limit wyjścia')
+    expect(await status(p)).toBe('Stopped: output limit')
   }
 })
 
@@ -270,7 +270,7 @@ scenario('09 shared terminal', async open => {
   let id = await start(A)
   await prompted(A, 'Imie? ')
   await waitFor("B: sees A's prompt live", async () => (await phase(B)) === 'running' && (await screen(B)).endsWith('Imie? '), 10_000)
-  expect(await status(B)).toBe(`${await A.page.locator('#name').innerText()} uruchamia program`)
+  expect(await status(B)).toBe(`${await A.page.locator('#name').innerText()} is running the program`)
   await focusTerminal(B)
   await type(B, 'Bartek')
   await press(B, 'Enter')
@@ -684,7 +684,7 @@ scenario('22 hostile document content', async open => {
   const B = await open('B', room(A))
   await connected(A, B)
   await sameText(B, TEMPLATE)
-  await waitFor('A: template in the editor', async () => (await editorText(A)).includes('class Figura'), 10_000)
+  await waitFor('A: template in the editor', async () => (await editorText(A)).includes('class Shape'), 10_000)
   const clean = (p: Peer, want: string) => waitFor(`${p.name}: the text is ${JSON.stringify(want.slice(0, 12))}... and holds nothing else`, () =>
     p.page.evaluate(w => {
       const { text } = window.__coop!.collab
@@ -753,7 +753,7 @@ scenario('23 code size limit', async open => {
   const B = await open('B', room(A))
   await connected(A, B)
   await sameText(B, TEMPLATE)
-  await waitFor('A: template in the editor', async () => (await editorText(A)).includes('class Figura'), 10_000)
+  await waitFor('A: template in the editor', async () => (await editorText(A)).includes('class Shape'), 10_000)
   const length = (p: Peer) => p.page.evaluate(() => window.__coop!.collab.text.length)
   // A paste through the editor itself, of as many characters as the whole file may have.
   const paste = () => A.page.evaluate(n => {
@@ -764,7 +764,7 @@ scenario('23 code size limit', async open => {
   await A.page.locator('#editor').click()
 
   // Above text that is already there: the paste is shortened where it lands, the text after it stays, and undo takes the paste back whole.
-  const line7 = TEMPLATE.indexOf('class Figura')
+  const line7 = TEMPLATE.indexOf('class Shape')
   for (const [where, at] of [['at the top', 0], ['in the middle', line7]] as const) {
     // The undo manager joins edits less than 500 ms apart into one step; the paste has to be a step of its own.
     const since = Date.now()
@@ -781,7 +781,7 @@ scenario('23 code size limit', async open => {
     await waitFor('A: the notice says so', async () => (await noticeShown(A)) === noticeText('code-limit'), 5000)
     await press(A, 'Control+z')
     for (const p of [A, B]) await waitFor(`${p.name}: undo gave back exactly the text from before`, async () => (await text(p)) === TEMPLATE, 60_000)
-    await waitFor('A: the editor shows it', async () => (await editorText(A)).startsWith(TEMPLATE.slice(0, line7 + 14)), 10_000)
+    await waitFor('A: the editor shows it', async () => (await editorText(A)).startsWith(TEMPLATE.slice(0, line7 + 13)), 10_000)
   }
 
   await press(A, 'Control+End')
@@ -936,7 +936,7 @@ scenario('25 caret names', async open => {
     return names.length === 0
   }, 5000)
   expect(Date.now() - stoppedAt).toBeGreaterThan(1000) // not at once: it stays for about two seconds after the last character
-  expect(await text(A)).toContain('nazwę i poabcdefghijklmnopqrstuvwxyzabcdle.\n')
+  expect(await text(A)).toContain('name and arabcdefghijklmnopqrstuvwxyzabcdea.\n')
 
   // Two carets in one place: the name shows on the caret of the one who types, not on both. C's window is in the
   // background here: a focused editor reports its caret again after an insertion at it, and its name shows then (README).
