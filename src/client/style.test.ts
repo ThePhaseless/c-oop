@@ -38,7 +38,7 @@ test('every colour token is a plain hex in both themes (the terminal reads them 
   for (const theme of [light, dark]) {
     for (const name of COLOR_TOKENS) expect([name, theme[name]]).toEqual([name, expect.stringMatching(/^#[0-9a-f]{6}$/)])
   }
-  expect(light['font-ui']).toContain('Recursive UI')
+  expect(light['font-ui']).toContain('Recursive Code')
   expect(light['font-code']).toContain('Recursive Code')
 })
 

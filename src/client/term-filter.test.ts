@@ -51,7 +51,7 @@ test('they also pass beside a colour sequence, where every character is judged a
 })
 
 test("clang's coloured diagnostics and the grey status lines pass as they are", () => {
-  const s = DIAGNOSTIC + '\x1b[90m[błąd kompilacji]\x1b[0m\n' + '\x1b[m\x1b[38;2;1;2;3m\x1b[38:5:196mx'
+  const s = DIAGNOSTIC + '\x1b[90m[compile error]\x1b[0m\n' + '\x1b[m\x1b[38;2;1;2;3m\x1b[38:5:196mx'
   expect(once(s)).toBe(s)
   expect(byUnit(s)).toBe(s)
 })

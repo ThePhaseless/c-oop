@@ -25,9 +25,9 @@ type State = {
   act?: 'copy' | 'copy-fail' | 'name' | 'code-limit' | 'more'
 }
 
-const PROMPT = 'Jak masz na imię? '
-const OUTPUT = `${PROMPT}Ala\r\nCześć, Ala! Oto figury:\r\n  Prostokąt ma pole 12\r\n  Koło ma pole 3.14159\r\n`
-const DIAGNOSTICS = '\x1b[1mmain.cpp:31:5: \x1b[0m\x1b[1;31merror: \x1b[0m\x1b[1muse of undeclared identifier \'figurry\'\x1b[0m\r\n   31 |     figurry.push_back(std::make_unique<Kolo>(1));\r\n      | \x1b[1;32m    ^~~~~~~\x1b[0m\r\n'
+const PROMPT = 'What is your name? '
+const OUTPUT = `${PROMPT}Ala\r\nHello, Ala! Here are the shapes:\r\n  Rectangle has area 12\r\n  Circle has area 3.14159\r\n`
+const DIAGNOSTICS = '\x1b[1mmain.cpp:31:5: \x1b[0m\x1b[1;31merror: \x1b[0m\x1b[1muse of undeclared identifier \'shapess\'\x1b[0m\r\n   31 |     shapess.push_back(std::make_unique<Circle>(1));\r\n      | \x1b[1;32m    ^~~~~~~\x1b[0m\r\n'
   + '\x1b[1mmain.cpp:28:9: \x1b[0m\x1b[1;35mwarning: \x1b[0m\x1b[1munused variable \'x\' [-Wunused-variable]\x1b[0m\r\n1 warning and 1 error generated.\r\n'
 const mine = (run: Partial<RunView>): Partial<RunView> => ({ runnerName: 'Ala', mine: true, ...run })
 const theirs = (run: Partial<RunView>): Partial<RunView> => ({ runnerName: 'Bartek', mine: false, ...run })
@@ -117,7 +117,7 @@ peers.slice(1, 3).forEach((peer, i) => {
   Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc))
   const remoteAwareness = new Awareness(remote)
   const at = (needle: string) => Y.createRelativePositionFromTypeIndex(remote.getText('code'), TEMPLATE.indexOf(needle))
-  const [anchor, head] = i === 0 ? ['    double a, b;', '\npublic:\n    Prostokat'] : ['"Koło"', '"Koło"']
+  const [anchor, head] = i === 0 ? ['    double a, b;', '\npublic:\n    Rectangle'] : ['"Circle"', '"Circle"']
   // the renewals every 15 s are forwarded too, so the carets do not time out after 30 s
   remoteAwareness.on('update', () => applyAwarenessUpdate(awareness, encodeAwarenessUpdate(remoteAwareness, [remote.clientID]), 'remote'))
   remoteAwareness.setLocalState({ user: peer.user, cursor: { anchor: at(anchor!), head: at(head!) } })
@@ -171,7 +171,7 @@ if (state.act === 'more') document.getElementById('more')!.click()
 
 // State picker, in the corner so that the page under it keeps its real layout.
 const picker = document.createElement('select')
-picker.setAttribute('aria-label', 'Stan interfejsu')
+picker.setAttribute('aria-label', 'Interface state')
 picker.style.cssText = 'position:fixed;right:0.5rem;bottom:0.5rem;z-index:1000;max-width:12rem;font:inherit'
 for (const name of Object.keys(STATES)) picker.append(new Option(name, name, false, name === stateName || (!STATES[stateName] && name === 'peers-3')))
 picker.onchange = () => go('s', picker.value)

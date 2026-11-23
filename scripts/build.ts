@@ -10,7 +10,7 @@ import { buildToolchain } from './toolchain.ts'
 
 const dist = resolve('dist')
 const client = resolve('src/client')
-const FONTS = ['latin', 'latin-ext'].flatMap(subset => ['mono', 'casl'].map(axis => `recursive-${subset}-${axis}-normal.woff2`))
+const FONTS = ['latin', 'latin-ext'].flatMap(subset => ['mono'].map(axis => `recursive-${subset}-${axis}-normal.woff2`))
 const COMPRESSED = ['index.html', 'main.js', 'theme.js', 'style.css', 'compiler.worker.js', 'runner.worker.js', 'favicon.svg']
 
 const id = await buildToolchain(dist)
